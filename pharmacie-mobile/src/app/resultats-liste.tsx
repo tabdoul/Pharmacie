@@ -4,6 +4,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Brand, Spacing } from '@/constants/theme';
 import { apiClient, ApiError } from '@/api/client';
+import { usePanier } from '@/context/PanierContext';
+import { storage } from '@/lib/storage';
 
 type ArticleMatch = {
   nomDemande: string;
@@ -26,15 +28,26 @@ type PharmacieMatch = {
   articles: ArticleMatch[];
 };
 
+const SEUIL_BONNE_CORRESPONDANCE = 0.5;
+
 export default function ResultatsListeScreen() {
   const router = useRouter();
   const { noms } = useLocalSearchParams<{ noms: string }>();
+  const { items: panierItems, ajouter, retirer, estDansPanier } = usePanier();
 
   const [resultats, setResultats] = useState<PharmacieMatch[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [articlesDemandes, setArticlesDemandes] = useState<string[]>([]);
   const [pharmacieOuverte, setPharmacieOuverte] = useState<number | null>(null);
+  const [autresDepliees, setAutresDepliees] = useState(false);
+  const [monQuartier, setMonQuartier] = useState<string | null>(null);
+
+  useEffect(() => {
+    storage.getItem('quartier_patient').then((valeur) => {
+      if (valeur) setMonQuartier(valeur);
+    });
+  }, []);
 
   useEffect(() => {
     if (!noms) return;
@@ -74,6 +87,164 @@ export default function ResultatsListeScreen() {
     if (telephone) Linking.openURL(`tel:${telephone}`);
   };
 
+  const voirDetail = (stockId: number | null) => {
+    if (stockId === null) return;
+    router.push({ pathname: '/produit/[stockId]', params: { stockId: String(stockId) } });
+  };
+
+  const resultatsTries = [...resultats].sort((a, b) => {
+    if (monQuartier) {
+      const aMatch = a.quartier === monQuartier ? 0 : 1;
+      const bMatch = b.quartier === monQuartier ? 0 : 1;
+      if (aMatch !== bMatch) return aMatch - bMatch;
+    }
+    if (a.nombreTrouves !== b.nombreTrouves) return b.nombreTrouves - a.nombreTrouves;
+    return a.prixTotal - b.prixTotal;
+  });
+
+  const bonnesCorrespondances = resultatsTries.filter(
+    (r) => r.nombreTrouves / r.nombreDemandes >= SEUIL_BONNE_CORRESPONDANCE
+  );
+  const autresPharmacies = resultatsTries.filter(
+    (r) => r.nombreTrouves / r.nombreDemandes < SEUIL_BONNE_CORRESPONDANCE
+  );
+
+  const basculerPanier = (pharmacie: PharmacieMatch, article: ArticleMatch) => {
+    if (!article.trouve || article.stockId === null || article.prix === null || !article.nomProduit) return;
+
+    if (estDansPanier(article.stockId)) {
+      retirer(article.stockId);
+      return;
+    }
+
+    ajouter({
+      stockId: article.stockId,
+      nomDemande: article.nomDemande,
+      nomProduit: article.nomProduit,
+      formeProduit: article.formeProduit,
+      prix: article.prix,
+      nomPharmacie: pharmacie.nomPharmacie,
+      pharmacieId: pharmacie.pharmacieId,
+      ville: pharmacie.ville,
+      quartier: pharmacie.quartier,
+      telephone: pharmacie.telephone,
+    });
+  };
+
+  const renderPharmacieCard = (item: PharmacieMatch, indexDansGroupe: number, estBonneCorrespondance: boolean) => {
+    const complet = item.nombreTrouves === item.nombreDemandes;
+    const ouverte = pharmacieOuverte === item.pharmacieId;
+    const memeQuartier = monQuartier !== null && item.quartier === monQuartier;
+
+    return (
+      <View key={item.pharmacieId} style={[styles.card, complet && styles.cardComplete]}>
+        <Pressable
+          onPress={() => setPharmacieOuverte(ouverte ? null : item.pharmacieId)}
+          style={styles.cardHeader}
+        >
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={styles.cardTitleRow}>
+              <Text style={styles.cardTitle}>{item.nomPharmacie}</Text>
+              {memeQuartier && (
+                <View style={styles.sameAreaBadge}>
+                  <Text style={styles.sameAreaBadgeText}>Même quartier</Text>
+                </View>
+              )}
+              {!memeQuartier && estBonneCorrespondance && indexDansGroupe === 0 && (
+                <View style={styles.bestBadge}>
+                  <Text style={styles.bestBadgeText}>Meilleure couverture</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.cardLocation}>
+              📍 {item.quartier ? `${item.quartier}, ` : ''}{item.ville}
+            </Text>
+            <View style={styles.coverageRow}>
+              <View style={styles.coverageBarTrack}>
+                <View
+                  style={[
+                    styles.coverageBarFill,
+                    { width: `${(item.nombreTrouves / item.nombreDemandes) * 100}%` },
+                    complet && styles.coverageBarFillComplete,
+                  ]}
+                />
+              </View>
+              <Text style={[styles.coverageText, complet && styles.coverageTextComplete]}>
+                {item.nombreTrouves}/{item.nombreDemandes}
+              </Text>
+            </View>
+          </View>
+          <Ionicons name={ouverte ? 'chevron-up' : 'chevron-down'} size={18} color={Brand.textFaint} />
+        </Pressable>
+
+        {ouverte && (
+          <View style={styles.detailSection}>
+            {item.articles.map((article) => {
+              const cliquable = article.trouve && article.stockId !== null;
+              const dansPanier = article.stockId !== null && estDansPanier(article.stockId);
+
+              return (
+                <View key={article.nomDemande} style={styles.articleRow}>
+                  <Pressable
+                    onPress={() => voirDetail(article.stockId)}
+                    disabled={!cliquable}
+                    style={styles.articleInfo}
+                  >
+                    <Ionicons
+                      name={article.trouve ? 'checkmark-circle' : 'close-circle-outline'}
+                      size={17}
+                      color={article.trouve ? Brand.success : Brand.textFaint}
+                    />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={[styles.articleText, !article.trouve && styles.articleTextIndisponible]}>
+                        {article.nomDemande}
+                      </Text>
+                      {article.trouve && article.prix !== null && (
+                        <Text style={styles.articlePrixSousTexte}>
+                          {article.prix.toLocaleString('fr-FR')} GNF
+                        </Text>
+                      )}
+                    </View>
+                  </Pressable>
+
+                  {cliquable && (
+                    <Pressable
+                      onPress={() => basculerPanier(item, article)}
+                      style={[styles.ajouterButton, dansPanier && styles.ajouterButtonActif]}
+                      accessibilityRole="button"
+                      accessibilityLabel={dansPanier ? `Retirer ${article.nomDemande} du panier` : `Ajouter ${article.nomDemande} au panier`}
+                    >
+                      <Ionicons
+                        name={dansPanier ? 'checkmark' : 'add'}
+                        size={15}
+                        color={dansPanier ? '#FFFFFF' : Brand.primary}
+                      />
+                      <Text style={[styles.ajouterButtonText, dansPanier && styles.ajouterButtonTextActif]}>
+                        {dansPanier ? 'Ajouté' : 'Ajouter'}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              );
+            })}
+
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total (articles disponibles)</Text>
+              <Text style={styles.totalValue}>{item.prixTotal.toLocaleString('fr-FR')} GNF</Text>
+            </View>
+
+            {item.telephone && (
+              <Pressable onPress={() => appeler(item.telephone)} style={styles.callButton}>
+                <Ionicons name="call-outline" size={16} color="#FFFFFF" />
+                <Text style={styles.callButtonText}>Appeler la pharmacie</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -87,6 +258,19 @@ export default function ResultatsListeScreen() {
             {articlesDemandes.length > 1 ? 's' : ''}
           </Text>
         </View>
+        <Pressable
+          onPress={() => router.push('/panier')}
+          style={styles.panierButton}
+          accessibilityRole="button"
+          accessibilityLabel="Voir mon panier"
+        >
+          <Ionicons name="bag-outline" size={20} color="#FFFFFF" />
+          {panierItems.length > 0 && (
+            <View style={styles.panierBadge}>
+              <Text style={styles.panierBadgeText}>{panierItems.length}</Text>
+            </View>
+          )}
+        </Pressable>
       </View>
 
       {chargement && (
@@ -113,96 +297,39 @@ export default function ResultatsListeScreen() {
 
       {!chargement && !erreur && resultats.length > 0 && (
         <FlatList
-          data={resultats}
+          data={bonnesCorrespondances}
           keyExtractor={(item) => String(item.pharmacieId)}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item, index }) => {
-            const complet = item.nombreTrouves === item.nombreDemandes;
-            const ouverte = pharmacieOuverte === item.pharmacieId;
-
-            return (
-              <View style={[styles.card, complet && styles.cardComplete]}>
+          ListEmptyComponent={
+            <Text style={styles.videText}>
+              Aucune pharmacie n'a la moitié ou plus des médicaments demandés.
+            </Text>
+          }
+          renderItem={({ item, index }) => renderPharmacieCard(item, index, true)}
+          ListFooterComponent={
+            autresPharmacies.length > 0 ? (
+              <View>
                 <Pressable
-                  onPress={() => setPharmacieOuverte(ouverte ? null : item.pharmacieId)}
-                  style={styles.cardHeader}
+                  onPress={() => setAutresDepliees((precedent) => !precedent)}
+                  style={styles.toggleAutresButton}
+                  accessibilityRole="button"
                 >
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <View style={styles.cardTitleRow}>
-                      <Text style={styles.cardTitle}>{item.nomPharmacie}</Text>
-                      {index === 0 && (
-                        <View style={styles.bestBadge}>
-                          <Text style={styles.bestBadgeText}>Meilleure couverture</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={styles.cardLocation}>
-                      📍 {item.quartier ? `${item.quartier}, ` : ''}{item.ville}
-                    </Text>
-                    <View style={styles.coverageRow}>
-                      <View style={styles.coverageBarTrack}>
-                        <View
-                          style={[
-                            styles.coverageBarFill,
-                            { width: `${(item.nombreTrouves / item.nombreDemandes) * 100}%` },
-                            complet && styles.coverageBarFillComplete,
-                          ]}
-                        />
-                      </View>
-                      <Text style={[styles.coverageText, complet && styles.coverageTextComplete]}>
-                        {item.nombreTrouves}/{item.nombreDemandes}
-                      </Text>
-                    </View>
-                  </View>
+                  <Text style={styles.toggleAutresText}>
+                    {autresDepliees ? 'Masquer' : 'Voir aussi'} {autresPharmacies.length} autre
+                    {autresPharmacies.length > 1 ? 's' : ''} pharmacie
+                    {autresPharmacies.length > 1 ? 's' : ''} (couverture partielle)
+                  </Text>
                   <Ionicons
-                    name={ouverte ? 'chevron-up' : 'chevron-down'}
-                    size={18}
-                    color={Brand.textFaint}
+                    name={autresDepliees ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={Brand.primary}
                   />
                 </Pressable>
-
-                {ouverte && (
-                  <View style={styles.detailSection}>
-                    {item.articles.map((article) => (
-                      <View key={article.nomDemande} style={styles.articleRow}>
-                        <Ionicons
-                          name={article.trouve ? 'checkmark-circle' : 'close-circle-outline'}
-                          size={17}
-                          color={article.trouve ? Brand.success : Brand.textFaint}
-                        />
-                        <Text
-                          style={[
-                            styles.articleText,
-                            !article.trouve && styles.articleTextIndisponible,
-                          ]}
-                        >
-                          {article.nomDemande}
-                        </Text>
-                        {article.trouve && article.prix !== null && (
-                          <Text style={styles.articlePrix}>
-                            {article.prix.toLocaleString('fr-FR')} GNF
-                          </Text>
-                        )}
-                      </View>
-                    ))}
-
-                    <View style={styles.totalRow}>
-                      <Text style={styles.totalLabel}>Total (articles disponibles)</Text>
-                      <Text style={styles.totalValue}>
-                        {item.prixTotal.toLocaleString('fr-FR')} GNF
-                      </Text>
-                    </View>
-
-                    {item.telephone && (
-                      <Pressable onPress={() => appeler(item.telephone)} style={styles.callButton}>
-                        <Ionicons name="call-outline" size={16} color="#FFFFFF" />
-                        <Text style={styles.callButtonText}>Appeler la pharmacie</Text>
-                      </Pressable>
-                    )}
-                  </View>
-                )}
+                {autresDepliees &&
+                  autresPharmacies.map((item, index) => renderPharmacieCard(item, index, false))}
               </View>
-            );
-          }}
+            ) : null
+          }
         />
       )}
     </View>
@@ -222,6 +349,20 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 19, fontWeight: '800', color: Colors.light.background },
   headerSubtitle: { fontSize: 13, color: '#BFE0D6', marginTop: 4 },
+  panierButton: { position: 'relative', padding: 2 },
+  panierBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 999,
+    backgroundColor: Brand.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  panierBadgeText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.four, gap: 8 },
   erreurText: { fontSize: 14, color: Brand.danger, textAlign: 'center' },
   videTitle: { fontSize: 16, fontWeight: '700', color: Colors.light.text },
@@ -246,6 +387,8 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 15.5, fontWeight: '700', color: Colors.light.text },
   bestBadge: { backgroundColor: Brand.successBg, paddingVertical: 3, paddingHorizontal: 8, borderRadius: 999 },
   bestBadgeText: { fontSize: 10.5, fontWeight: '700', color: Brand.primary },
+  sameAreaBadge: { backgroundColor: Brand.warningBg, paddingVertical: 3, paddingHorizontal: 8, borderRadius: 999 },
+  sameAreaBadgeText: { fontSize: 10.5, fontWeight: '700', color: Brand.warning },
   cardLocation: { fontSize: 12.5, color: Brand.textFaint, marginTop: 3 },
   coverageRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
   coverageBarTrack: {
@@ -267,10 +410,34 @@ const styles = StyleSheet.create({
     borderTopColor: Brand.border,
     paddingTop: 12,
   },
-  articleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  articleText: { flex: 1, fontSize: 13.5, color: Colors.light.text, fontWeight: '600' },
+  articleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  articleInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
+  },
+  articleText: { fontSize: 13.5, color: Colors.light.text, fontWeight: '600' },
   articleTextIndisponible: { color: Brand.textFaint, fontWeight: '400', textDecorationLine: 'line-through' },
-  articlePrix: { fontSize: 13, fontWeight: '700', color: Colors.light.text },
+  articlePrixSousTexte: { fontSize: 11.5, color: Brand.textFaint, marginTop: 1 },
+  ajouterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: Brand.successBg,
+    flexShrink: 0,
+  },
+  ajouterButtonActif: { backgroundColor: Brand.success },
+  ajouterButtonText: { fontSize: 11.5, fontWeight: '700', color: Brand.primary },
+  ajouterButtonTextActif: { color: '#FFFFFF' },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -292,4 +459,14 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   callButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+  toggleAutresButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  toggleAutresText: { fontSize: 13.5, fontWeight: '700', color: Brand.primary, textAlign: 'center' },
 });

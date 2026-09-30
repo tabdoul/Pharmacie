@@ -1,11 +1,14 @@
 import React from 'react';
 import { Stack } from 'expo-router';
 import { AuthProvider } from '../context/AuthContext';
+import { PanierProvider } from '../context/PanierContext';
 
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <Stack screenOptions={{ headerShown: false }} />
+      <PanierProvider>
+        <Stack screenOptions={{ headerShown: false }} />
+      </PanierProvider>
     </AuthProvider>
   );
 }

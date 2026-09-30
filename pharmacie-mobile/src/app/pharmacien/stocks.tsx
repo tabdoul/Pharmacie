@@ -7,9 +7,12 @@ import {
   FlatList,
   ActivityIndicator,
   Modal,
+  Keyboard,
   StyleSheet,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Brand, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { apiClient, ApiError } from '@/api/client';
@@ -26,20 +29,38 @@ type StockPharmacien = {
   dateDerniereMaj: string;
 };
 
+const LIBELLE_FORME: Record<string, string> = {
+  COMPRIME: 'Comprimé', GELULE: 'Gélule', SIROP: 'Sirop', INJECTABLE: 'Injectable',
+  POMMADE: 'Pommade', CREME: 'Crème', SUPPOSITOIRE: 'Suppositoire', POUDRE: 'Poudre',
+  GOUTTES: 'Gouttes', PATCH: 'Patch', SPRAY: 'Spray', AUTRE: 'Autre',
+};
+
+const STATUT_COULEUR = {
+  DISPONIBLE: { point: Brand.success, fond: Colors.light.backgroundElement, bordure: Brand.border },
+  STOCK_FAIBLE: { point: Brand.warning, fond: Brand.warningBg, bordure: '#EAD9BB' },
+  RUPTURE: { point: Brand.danger, fond: Brand.dangerBg, bordure: '#EBC9BF' },
+} as const;
+
 export default function StocksScreen() {
   const router = useRouter();
   const { token } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { statut: statutParam } = useLocalSearchParams<{ statut?: string }>();
 
   const [stocks, setStocks] = useState<StockPharmacien[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [recherche, setRecherche] = useState('');
+  const [formeSelectionnee, setFormeSelectionnee] = useState<string | null>(null);
+  const [statutFiltre, setStatutFiltre] = useState<string | null>(statutParam ?? null);
 
   const [stockEnEdition, setStockEnEdition] = useState<StockPharmacien | null>(null);
   const [quantiteEdit, setQuantiteEdit] = useState('');
   const [prixEdit, setPrixEdit] = useState('');
   const [enregistrement, setEnregistrement] = useState(false);
   const [erreurEdition, setErreurEdition] = useState<string | null>(null);
+  const [confirmationSuppressionOuverte, setConfirmationSuppressionOuverte] = useState(false);
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false);
 
   const charger = useCallback(() => {
     if (!token) return;
@@ -58,20 +79,30 @@ export default function StocksScreen() {
     }, [charger])
   );
 
-  const stocksFiltres = stocks.filter((s) =>
-    s.nomProduit.toLowerCase().includes(recherche.trim().toLowerCase())
-  );
+  const formesDisponibles = Array.from(
+    new Set(stocks.map((s) => s.formeProduit).filter((f): f is string => !!f))
+  ).sort();
+
+  const stocksFiltres = stocks.filter((s) => {
+    const matchRecherche = s.nomProduit.toLowerCase().includes(recherche.trim().toLowerCase());
+    const matchForme = !formeSelectionnee || s.formeProduit === formeSelectionnee;
+    const matchStatut = !statutFiltre || s.statut === statutFiltre;
+    return matchRecherche && matchForme && matchStatut;
+  });
 
   const ouvrirEdition = (stock: StockPharmacien) => {
     setStockEnEdition(stock);
     setQuantiteEdit(String(stock.quantite));
     setPrixEdit(String(stock.prix));
     setErreurEdition(null);
+    setConfirmationSuppressionOuverte(false);
   };
 
   const fermerEdition = () => {
+    Keyboard.dismiss();
     setStockEnEdition(null);
     setErreurEdition(null);
+    setConfirmationSuppressionOuverte(false);
   };
 
   const enregistrerModification = async () => {
@@ -108,22 +139,90 @@ export default function StocksScreen() {
     }
   };
 
+  const supprimerStock = async () => {
+    if (!stockEnEdition || !token) return;
+    setSuppressionEnCours(true);
+    setErreurEdition(null);
+    try {
+      await apiClient.delete(`/api/pharmacien/stocks/${stockEnEdition.stockId}`, token);
+      setStocks((precedent) => precedent.filter((s) => s.stockId !== stockEnEdition.stockId));
+      fermerEdition();
+    } catch (e) {
+      setErreurEdition(e instanceof ApiError ? e.message : 'Échec de la suppression.');
+    } finally {
+      setSuppressionEnCours(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Mes stocks</Text>
+      {/* Bandeau reduit */}
+      <View style={styles.bandeau}>
+        <Text style={styles.bandeauTitle}>Mes stocks</Text>
+        <Pressable
+          onPress={() => router.push('/pharmacien/ajouter-produit')}
+          accessibilityRole="button"
+          accessibilityLabel="Ajouter un produit"
+          style={styles.addButton}
+        >
+          <Ionicons name="add" size={20} color="#FFFFFF" />
+        </Pressable>
       </View>
 
+      {/* Recherche */}
       <View style={styles.searchSection}>
-        <TextInput
-          value={recherche}
-          onChangeText={setRecherche}
-          placeholder="Rechercher un produit du stock"
-          placeholderTextColor={Brand.textFaint}
-          style={styles.searchInput}
-        />
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={17} color={Brand.textFaint} />
+          <TextInput
+            value={recherche}
+            onChangeText={setRecherche}
+            placeholder="Rechercher un produit du stock"
+            placeholderTextColor={Brand.textFaint}
+            style={styles.searchInput}
+          />
+        </View>
       </View>
 
+      {/* Filtre statut actif (venant du dashboard) */}
+      {statutFiltre && (
+        <View style={styles.filtreStatutBandeau}>
+          <Text style={styles.filtreStatutTexte}>
+            Filtré : {statutFiltre === 'DISPONIBLE' ? 'Disponible' : statutFiltre === 'STOCK_FAIBLE' ? 'Stock faible' : 'Rupture'}
+          </Text>
+          <Pressable onPress={() => setStatutFiltre(null)} accessibilityRole="button" accessibilityLabel="Retirer le filtre">
+            <Ionicons name="close" size={16} color={Brand.primary} />
+          </Pressable>
+        </View>
+      )}
+
+      {/* Filtres par forme */}
+      {formesDisponibles.length > 1 && (
+        <View style={styles.filtresSection}>
+          <FlatList
+            data={['TOUS', ...formesDisponibles]}
+            keyExtractor={(item) => item}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8 }}
+            renderItem={({ item }) => {
+              const estTous = item === 'TOUS';
+              const selectionne = estTous ? formeSelectionnee === null : formeSelectionnee === item;
+              return (
+                <Pressable
+                  onPress={() => setFormeSelectionnee(estTous ? null : item)}
+                  style={[styles.filtreChip, selectionne && styles.filtreChipActif]}
+                >
+                  <Text style={[styles.filtreChipTexte, selectionne && styles.filtreChipTexteActif]}>
+                    {estTous ? 'Tous' : LIBELLE_FORME[item] ?? item}
+                  </Text>
+                </Pressable>
+              );
+            }}
+          />
+        </View>
+      )}
+
+      {/* Legende */}
       <View style={styles.legend}>
         <View style={styles.legendItem}>
           <View style={[styles.legendDot, { backgroundColor: Brand.success }]} />
@@ -160,18 +259,12 @@ export default function StocksScreen() {
             <Text style={styles.emptyText}>Aucun produit ne correspond à cette recherche.</Text>
           }
           renderItem={({ item }) => {
-            const dotColor =
-              item.statut === 'DISPONIBLE' ? Brand.success : item.statut === 'STOCK_FAIBLE' ? Brand.warning : Brand.danger;
-            const bgColor =
-              item.statut === 'DISPONIBLE' ? Colors.light.backgroundElement : item.statut === 'STOCK_FAIBLE' ? Brand.warningBg : Brand.dangerBg;
-            const borderColor =
-              item.statut === 'DISPONIBLE' ? Brand.border : item.statut === 'STOCK_FAIBLE' ? '#EAD9BB' : '#EBC9BF';
-
+            const couleurs = STATUT_COULEUR[item.statut];
             return (
-              <View style={[styles.card, { backgroundColor: bgColor, borderColor }]}>
+              <View style={[styles.card, { backgroundColor: couleurs.fond, borderColor: couleurs.bordure }]}>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={styles.cardTitleRow}>
-                    <View style={[styles.dot, { backgroundColor: dotColor }]} />
+                    <View style={[styles.dot, { backgroundColor: couleurs.point }]} />
                     <Text style={styles.cardTitle}>{item.nomProduit}</Text>
                   </View>
                   <Text style={styles.cardSubtitle}>
@@ -187,7 +280,7 @@ export default function StocksScreen() {
                   accessibilityLabel={`Modifier ${item.nomProduit}`}
                   style={styles.editButton}
                 >
-                  <Text style={styles.editButtonGlyph}>✎</Text>
+                  <Ionicons name="create-outline" size={17} color={Colors.light.textSecondary} />
                 </Pressable>
               </View>
             );
@@ -195,11 +288,14 @@ export default function StocksScreen() {
         />
       )}
 
-      <View style={styles.bottomNav}>
+      {/* Bottom nav */}
+      <View style={[styles.bottomNav, { paddingBottom: 12 + insets.bottom }]}>
         <Pressable onPress={() => router.push('/pharmacien/dashboard')} style={styles.navItem}>
+          <Ionicons name="grid-outline" size={20} color={Brand.navInactive} />
           <Text style={styles.navLabel}>Tableau de bord</Text>
         </Pressable>
         <View style={styles.navItem}>
+          <Ionicons name="cube" size={20} color={Brand.primary} />
           <Text style={[styles.navLabel, styles.navLabelActive]}>Stocks</Text>
         </View>
       </View>
@@ -208,50 +304,104 @@ export default function StocksScreen() {
       <Modal visible={!!stockEnEdition} transparent animationType="slide" onRequestClose={fermerEdition}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{stockEnEdition?.nomProduit}</Text>
-
-            <View style={styles.field}>
-              <Text style={styles.label}>Quantité en stock</Text>
-              <TextInput
-                value={quantiteEdit}
-                onChangeText={setQuantiteEdit}
-                keyboardType="numeric"
-                style={styles.input}
-              />
-            </View>
-
-            <View style={styles.field}>
-              <Text style={styles.label}>Prix (GNF)</Text>
-              <TextInput
-                value={prixEdit}
-                onChangeText={setPrixEdit}
-                keyboardType="numeric"
-                style={styles.input}
-              />
-            </View>
-
-            {erreurEdition && (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>{erreurEdition}</Text>
-              </View>
-            )}
-
-            <View style={styles.modalActions}>
-              <Pressable onPress={fermerEdition} style={styles.cancelButton} disabled={enregistrement}>
-                <Text style={styles.cancelText}>Annuler</Text>
-              </Pressable>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{stockEnEdition?.nomProduit}</Text>
               <Pressable
-                onPress={enregistrerModification}
-                style={[styles.saveButton, enregistrement && styles.saveButtonDisabled]}
-                disabled={enregistrement}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setConfirmationSuppressionOuverte(true);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Supprimer ce produit du stock"
+                style={styles.deleteIconButton}
               >
-                {enregistrement ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Text style={styles.saveText}>Enregistrer</Text>
-                )}
+                <Ionicons name="trash-outline" size={18} color={Brand.danger} />
               </Pressable>
             </View>
+
+            {!confirmationSuppressionOuverte ? (
+              <>
+                <View style={styles.field}>
+                  <Text style={styles.label}>Quantité en stock</Text>
+                  <TextInput
+                    value={quantiteEdit}
+                    onChangeText={setQuantiteEdit}
+                    keyboardType="numeric"
+                    style={styles.input}
+                  />
+                </View>
+
+                <View style={styles.field}>
+                  <Text style={styles.label}>Prix (GNF)</Text>
+                  <TextInput
+                    value={prixEdit}
+                    onChangeText={setPrixEdit}
+                    keyboardType="numeric"
+                    style={styles.input}
+                  />
+                </View>
+
+                {erreurEdition && (
+                  <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>{erreurEdition}</Text>
+                  </View>
+                )}
+
+                <View style={styles.modalActions}>
+                  <Pressable onPress={fermerEdition} style={styles.cancelButton} disabled={enregistrement}>
+                    <Text style={styles.cancelText}>Annuler</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={enregistrerModification}
+                    style={[styles.saveButton, enregistrement && styles.saveButtonDisabled]}
+                    disabled={enregistrement}
+                  >
+                    {enregistrement ? (
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                    ) : (
+                      <Text style={styles.saveText}>Enregistrer</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.confirmationBox}>
+                  <Ionicons name="warning-outline" size={22} color={Brand.danger} />
+                  <Text style={styles.confirmationTexte}>
+                    Retirer définitivement "{stockEnEdition?.nomProduit}" du stock de votre pharmacie ?
+                    Cette action est irréversible.
+                  </Text>
+                </View>
+
+                {erreurEdition && (
+                  <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>{erreurEdition}</Text>
+                  </View>
+                )}
+
+                <View style={styles.modalActions}>
+                  <Pressable
+                    onPress={() => setConfirmationSuppressionOuverte(false)}
+                    style={styles.cancelButton}
+                    disabled={suppressionEnCours}
+                  >
+                    <Text style={styles.cancelText}>Annuler</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={supprimerStock}
+                    style={[styles.deleteButton, suppressionEnCours && styles.saveButtonDisabled]}
+                    disabled={suppressionEnCours}
+                  >
+                    {suppressionEnCours ? (
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                    ) : (
+                      <Text style={styles.saveText}>Supprimer</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -261,24 +411,58 @@ export default function StocksScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.light.background },
-  header: {
+  bandeau: {
     backgroundColor: Brand.headerDark,
     paddingTop: Spacing.six,
-    paddingHorizontal: Spacing.four,
     paddingBottom: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  headerTitle: { fontSize: 19, fontWeight: '700', color: Colors.light.background },
-  searchSection: { paddingHorizontal: Spacing.four, paddingTop: Spacing.three },
-  searchInput: {
+  bandeauTitle: { fontWeight: '800', fontSize: 18, color: Colors.light.background },
+  addButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: Brand.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchSection: { paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     backgroundColor: Colors.light.backgroundElement,
     borderWidth: 1.5,
     borderColor: Brand.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    fontSize: 14,
-    color: Colors.light.text,
+    borderRadius: 14,
+    paddingHorizontal: 16,
   },
+  searchInput: { flex: 1, fontSize: 14, color: Colors.light.text, paddingVertical: 12 },
+  filtresSection: { paddingHorizontal: Spacing.four, paddingTop: 12 },
+  filtreStatutBandeau: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: Spacing.four,
+    marginTop: 12,
+    backgroundColor: Brand.chipBg,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  filtreStatutTexte: { fontSize: 12.5, fontWeight: '700', color: Brand.primary },
+  filtreChip: {
+    paddingVertical: 7,
+    paddingHorizontal: 13,
+    borderRadius: 999,
+    backgroundColor: Brand.chipBg,
+  },
+  filtreChipActif: { backgroundColor: Brand.primary },
+  filtreChipTexte: { fontSize: 12.5, fontWeight: '600', color: Colors.light.text },
+  filtreChipTexteActif: { color: '#FFFFFF' },
   legend: { flexDirection: 'row', gap: 14, paddingHorizontal: Spacing.four, paddingTop: 12 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legendDot: { width: 8, height: 8, borderRadius: 999 },
@@ -308,16 +492,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  editButtonGlyph: { fontSize: 15, color: Colors.light.textSecondary },
   bottomNav: {
     flexDirection: 'row',
     borderTopWidth: 1,
     borderTopColor: Brand.border,
     backgroundColor: Colors.light.backgroundElement,
-    paddingVertical: 12,
+    paddingTop: 12,
   },
-  navItem: { flex: 1, alignItems: 'center' },
-  navLabel: { fontSize: 12, fontWeight: '600', color: Brand.navInactive },
+  navItem: { flex: 1, alignItems: 'center', gap: 3 },
+  navLabel: { fontSize: 11, fontWeight: '600', color: Brand.navInactive },
   navLabelActive: { color: Brand.primary, fontWeight: '700' },
   modalOverlay: {
     flex: 1,
@@ -331,7 +514,16 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
     gap: Spacing.three,
   },
-  modalTitle: { fontSize: 17, fontWeight: '700', color: Colors.light.text },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  modalTitle: { fontSize: 17, fontWeight: '700', color: Colors.light.text, flex: 1 },
+  deleteIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: Brand.dangerBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   field: { gap: 6 },
   label: { fontSize: 13, fontWeight: '600', color: Colors.light.textSecondary },
   input: {
@@ -346,6 +538,15 @@ const styles = StyleSheet.create({
   },
   errorBox: { backgroundColor: Brand.dangerBg, borderRadius: 10, padding: 10 },
   errorText: { color: Brand.danger, fontSize: 13 },
+  confirmationBox: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: Brand.dangerBg,
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'flex-start',
+  },
+  confirmationTexte: { flex: 1, fontSize: 13.5, color: '#7A2E20', lineHeight: 19 },
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
   cancelButton: {
     flex: 1,
@@ -365,4 +566,12 @@ const styles = StyleSheet.create({
   },
   saveButtonDisabled: { opacity: 0.6 },
   saveText: { fontWeight: '700', color: '#FFFFFF', fontSize: 14.5 },
+  deleteButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Brand.danger,
+  },
 });

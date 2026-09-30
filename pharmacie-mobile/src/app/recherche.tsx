@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   TextInput,
   Pressable,
   ScrollView,
+  Modal,
+  FlatList,
   StyleSheet,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Brand, Spacing } from '@/constants/theme';
+import { apiClient } from '@/api/client';
+import { storage } from '@/lib/storage';
 
 type ArticleListe = {
   id: string;
@@ -17,11 +21,37 @@ type ArticleListe = {
 };
 
 const SUGGESTIONS = ['Vitamine C', 'Sirop toux', 'Sérum physio'];
+const QUARTIER_PATIENT_KEY = 'quartier_patient';
 
 export default function RechercheScreen() {
   const router = useRouter();
   const [valeur, setValeur] = useState('');
   const [articles, setArticles] = useState<ArticleListe[]>([]);
+  const [quartiers, setQuartiers] = useState<string[]>([]);
+  const [monQuartier, setMonQuartier] = useState<string | null>(null);
+  const [modaleQuartierOuverte, setModaleQuartierOuverte] = useState(false);
+
+  useEffect(() => {
+    storage.getItem(QUARTIER_PATIENT_KEY).then((valeur) => {
+      if (valeur) setMonQuartier(valeur);
+    });
+    apiClient.get<string[]>('/api/public/quartiers').then(setQuartiers).catch(() => {
+      // Non bloquant : si ca echoue, on n'affiche simplement pas le selecteur
+    });
+  }, []);
+
+  const choisirQuartier = (quartier: string | null) => {
+    setMonQuartier((precedent) => {
+      const nouveau = precedent === quartier ? null : quartier;
+      if (nouveau) {
+        storage.setItem(QUARTIER_PATIENT_KEY, nouveau);
+      } else {
+        storage.deleteItem(QUARTIER_PATIENT_KEY);
+      }
+      return nouveau;
+    });
+    setModaleQuartierOuverte(false);
+  };
 
   const dejaDansListe = (label: string) =>
     articles.some((a) => a.label.toLowerCase() === label.toLowerCase());
@@ -110,6 +140,23 @@ export default function RechercheScreen() {
           </View>
         </View>
 
+        {/* Mon quartier */}
+        {quartiers.length > 0 && (
+          <View style={styles.quartierSection}>
+            <Pressable
+              onPress={() => setModaleQuartierOuverte(true)}
+              style={styles.quartierSelecteur}
+              accessibilityRole="button"
+            >
+              <Ionicons name="location-outline" size={18} color={Brand.textFaint} />
+              <Text style={styles.quartierSelecteurTexte}>
+                {monQuartier ? `Mon quartier : ${monQuartier}` : 'Choisir mon quartier (optionnel)'}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color={Brand.textFaint} />
+            </Pressable>
+          </View>
+        )}
+
         {/* Ma liste */}
         <View style={styles.listeSection}>
           <Text style={styles.listeLabel}>
@@ -169,6 +216,37 @@ export default function RechercheScreen() {
           {nombreArticles > 0 && <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />}
         </Pressable>
       </View>
+
+      {/* Modale de selection du quartier */}
+      <Modal
+        visible={modaleQuartierOuverte}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModaleQuartierOuverte(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setModaleQuartierOuverte(false)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Choisir mon quartier</Text>
+            <FlatList
+              data={quartiers}
+              keyExtractor={(item) => item}
+              style={{ maxHeight: 320 }}
+              ListHeaderComponent={
+                <Pressable onPress={() => choisirQuartier(null)} style={styles.modalItem}>
+                  <Text style={styles.modalItemTexte}>Aucun (tous les quartiers)</Text>
+                  {monQuartier === null && <Ionicons name="checkmark" size={18} color={Brand.primary} />}
+                </Pressable>
+              }
+              renderItem={({ item }) => (
+                <Pressable onPress={() => choisirQuartier(item)} style={styles.modalItem}>
+                  <Text style={styles.modalItemTexte}>{item}</Text>
+                  {monQuartier === item && <Ionicons name="checkmark" size={18} color={Brand.primary} />}
+                </Pressable>
+              )}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -180,7 +258,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.six,
     paddingBottom: Spacing.four,
-    gap: 8,
+    gap: 6,
   },
   headerTopRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   backButton: { padding: 2 },
@@ -216,6 +294,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addButtonActive: { backgroundColor: Brand.primary },
+  quartierSection: { paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
+  quartierSelecteur: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: Colors.light.backgroundElement,
+    borderWidth: 1.5,
+    borderColor: Brand.border,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  quartierSelecteurTexte: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.light.text },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(28, 36, 32, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: Colors.light.backgroundElement,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: Spacing.four,
+    paddingBottom: Spacing.six,
+  },
+  modalTitle: { fontSize: 17, fontWeight: '700', color: Colors.light.text, marginBottom: 12 },
+  modalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Brand.border,
+  },
+  modalItemTexte: { fontSize: 15, color: Colors.light.text, fontWeight: '600' },
   listeSection: { paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
   listeLabel: {
     fontSize: 12,
@@ -269,15 +382,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   suggestionChipText: { fontSize: 13, fontWeight: '600', color: Colors.light.text },
-  pharmacienLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: Spacing.five,
-  },
-  pharmacienLinkText: { fontSize: 13, color: Brand.textFaint },
-  pharmacienLinkTextBold: { color: Brand.primary, fontWeight: '700' },
   footer: {
     padding: Spacing.four,
     borderTopWidth: 1,

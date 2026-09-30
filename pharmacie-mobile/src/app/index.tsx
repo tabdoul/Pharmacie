@@ -65,7 +65,7 @@ export default function AccueilScreen() {
               <Ionicons name="medical-outline" size={24} color="#2B5F8A" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.adTitle}>Hôpital Docteur Bademba</Text>
+              <Text style={styles.adTitle}>CHU de Thierno</Text>
               <Text style={styles.adSubtitle}>
                 Bilans de santé complets — prenez rendez-vous dès aujourd'hui
               </Text>
@@ -77,14 +77,15 @@ export default function AccueilScreen() {
           </View>
         </View>
 
-        {/* Comment ca marche : rangees empilees (icone + texte cote a cote) */}
-        <View style={styles.etapesColonne}>
+        {/* Comment ca marche : titre + 3 mini-cartes cote a cote */}
+        <Text style={styles.sectionTitle}>Comment ça marche</Text>
+        <View style={styles.etapesRow}>
           {ETAPES.map((etape, index) => (
-            <View key={index} style={styles.etapeRangee}>
+            <View key={index} style={styles.etapeCard}>
               <View style={[styles.etapeIconCircle, { backgroundColor: etape.iconeBg }]}>
-                <Ionicons name={etape.icone} size={16} color={etape.iconeCouleur} />
+                <Ionicons name={etape.icone} size={17} color={etape.iconeCouleur} />
               </View>
-              <Text style={styles.etapeTexteRangee}>{etape.texte}</Text>
+              <Text style={styles.etapeText}>{etape.texte}</Text>
             </View>
           ))}
         </View>
@@ -172,18 +173,28 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 19,
   },
-  etapesColonne: {
-    marginTop: 18,
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Brand.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: 20,
+    marginBottom: 10,
+    textAlign :'center'
+  },
+  etapesRow: {
+    flexDirection: 'row',
     gap: 10,
   },
-  etapeRangee: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 13,
+  etapeCard: {
+    flex: 1,
     backgroundColor: Colors.light.backgroundElement,
-    borderRadius: 14,
-    paddingVertical: 13,
-    paddingHorizontal: 15,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    gap: 8,
     shadowColor: '#1C2420',
     shadowOpacity: 0.05,
     shadowRadius: 3,
@@ -191,18 +202,18 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   etapeIconCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
   },
-  etapeTexteRangee: {
-    flex: 1,
-    fontSize: 13.5,
+  etapeText: {
+    fontSize: 11.5,
     fontWeight: '600',
     color: Colors.light.text,
+    textAlign: 'center',
+    lineHeight: 15,
   },
   footer: {
     padding: Spacing.four,
