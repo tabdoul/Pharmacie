@@ -7,21 +7,33 @@ import {
   FlatList,
   ActivityIndicator,
   Modal,
+  Image,
   Keyboard,
+  Alert,
   StyleSheet,
 } from 'react-native';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Brand, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
-import { apiClient, ApiError } from '@/api/client';
+import { apiClient, ApiError, API_BASE_URL } from '@/api/client';
+
+type ImportResultat = {
+  ajoutes: number;
+  ignores: number;
+  erreurs: string[];
+};
 
 type StockPharmacien = {
   stockId: number;
   produitId: number;
   nomProduit: string;
   formeProduit: string | null;
+  imageUrl: string | null;
   quantite: number;
   seuilAlerte: number;
   prix: number;
@@ -35,12 +47,6 @@ const LIBELLE_FORME: Record<string, string> = {
   GOUTTES: 'Gouttes', PATCH: 'Patch', SPRAY: 'Spray', AUTRE: 'Autre',
 };
 
-const STATUT_COULEUR = {
-  DISPONIBLE: { point: Brand.success, fond: Colors.light.backgroundElement, bordure: Brand.border },
-  STOCK_FAIBLE: { point: Brand.warning, fond: Brand.warningBg, bordure: '#EAD9BB' },
-  RUPTURE: { point: Brand.danger, fond: Brand.dangerBg, bordure: '#EBC9BF' },
-} as const;
-
 export default function StocksScreen() {
   const router = useRouter();
   const { token } = useAuth();
@@ -52,6 +58,7 @@ export default function StocksScreen() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [recherche, setRecherche] = useState('');
   const [formeSelectionnee, setFormeSelectionnee] = useState<string | null>(null);
+  const [menuFormesOuvert, setMenuFormesOuvert] = useState(false);
   const [statutFiltre, setStatutFiltre] = useState<string | null>(statutParam ?? null);
 
   const [stockEnEdition, setStockEnEdition] = useState<StockPharmacien | null>(null);
@@ -61,6 +68,8 @@ export default function StocksScreen() {
   const [erreurEdition, setErreurEdition] = useState<string | null>(null);
   const [confirmationSuppressionOuverte, setConfirmationSuppressionOuverte] = useState(false);
   const [suppressionEnCours, setSuppressionEnCours] = useState(false);
+  const [exportEnCours, setExportEnCours] = useState(false);
+  const [importEnCours, setImportEnCours] = useState(false);
 
   const charger = useCallback(() => {
     if (!token) return;
@@ -139,6 +148,65 @@ export default function StocksScreen() {
     }
   };
 
+  const exporterStock = async () => {
+    if (!token) return;
+    setExportEnCours(true);
+    try {
+      const reponse = await fetch(`${API_BASE_URL}/api/pharmacien/stocks/export`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!reponse.ok) {
+        throw new Error();
+      }
+      const contenu = await reponse.text();
+      const fichier = new File(Paths.cache, 'stock-pharmacie.csv');
+      fichier.write(contenu);
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fichier.uri, { mimeType: 'text/csv', dialogTitle: 'Exporter mon stock' });
+      } else {
+        Alert.alert('Export prêt', 'Le fichier CSV a été généré, mais le partage n\'est pas disponible sur cet appareil.');
+      }
+    } catch {
+      Alert.alert('Erreur', "Échec de l'export du stock. Réessayez plus tard.");
+    } finally {
+      setExportEnCours(false);
+    }
+  };
+
+  const importerStock = async () => {
+    const selection = await DocumentPicker.getDocumentAsync({
+      type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel', '*/*'],
+      copyToCacheDirectory: true,
+    });
+    if (selection.canceled || !selection.assets?.[0] || !token) return;
+
+    const fichier = selection.assets[0];
+    setImportEnCours(true);
+    try {
+      const resultat = await apiClient.uploadFile<ImportResultat>(
+        '/api/pharmacien/stocks/import',
+        'fichier',
+        { uri: fichier.uri, name: fichier.name ?? 'stock.csv', type: 'text/csv' },
+        token
+      );
+      charger();
+
+      const apercuErreurs = resultat.erreurs.slice(0, 5).join('\n');
+      const resteErreurs = resultat.erreurs.length > 5 ? `\n… et ${resultat.erreurs.length - 5} autre(s).` : '';
+      const detailErreurs = resultat.erreurs.length > 0 ? `\n\n${apercuErreurs}${resteErreurs}` : '';
+
+      Alert.alert(
+        'Import terminé',
+        `${resultat.ajoutes} produit(s) ajouté(s), ${resultat.ignores} ignoré(s) (déjà dans votre stock).${detailErreurs}`
+      );
+    } catch (e) {
+      Alert.alert('Erreur', e instanceof ApiError ? e.message : "Échec de l'import du fichier.");
+    } finally {
+      setImportEnCours(false);
+    }
+  };
+
   const supprimerStock = async () => {
     if (!stockEnEdition || !token) return;
     setSuppressionEnCours(true);
@@ -159,18 +227,56 @@ export default function StocksScreen() {
       {/* Bandeau reduit */}
       <View style={styles.bandeau}>
         <Text style={styles.bandeauTitle}>Mes stocks</Text>
-        <Pressable
-          onPress={() => router.push('/pharmacien/ajouter-produit')}
-          accessibilityRole="button"
-          accessibilityLabel="Ajouter un produit"
-          style={styles.addButton}
-        >
-          <Ionicons name="add" size={20} color="#FFFFFF" />
-        </Pressable>
+        <View style={styles.bandeauActions}>
+          <Pressable
+            onPress={importerStock}
+            disabled={importEnCours}
+            accessibilityRole="button"
+            accessibilityLabel="Importer un fichier CSV"
+            style={styles.exportButton}
+          >
+            {importEnCours ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Ionicons name="cloud-upload-outline" size={19} color="#FFFFFF" />
+            )}
+          </Pressable>
+          <Pressable
+            onPress={exporterStock}
+            disabled={exportEnCours}
+            accessibilityRole="button"
+            accessibilityLabel="Exporter le stock en CSV"
+            style={styles.exportButton}
+          >
+            {exportEnCours ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Ionicons name="download-outline" size={19} color="#FFFFFF" />
+            )}
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/pharmacien/ajouter-produit')}
+            accessibilityRole="button"
+            accessibilityLabel="Ajouter un produit"
+            style={styles.addButton}
+          >
+            <Ionicons name="add" size={20} color="#FFFFFF" />
+          </Pressable>
+        </View>
       </View>
 
       {/* Recherche */}
       <View style={styles.searchSection}>
+        {formesDisponibles.length > 1 && (
+          <Pressable
+            onPress={() => setMenuFormesOuvert(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Filtrer par forme"
+            style={styles.burgerButton}
+          >
+            <Ionicons name="menu" size={20} color={Colors.light.text} />
+          </Pressable>
+        )}
         <View style={styles.searchBox}>
           <Ionicons name="search" size={17} color={Brand.textFaint} />
           <TextInput
@@ -183,6 +289,18 @@ export default function StocksScreen() {
         </View>
       </View>
 
+      {/* Forme selectionnee (via le menu burger) */}
+      {formeSelectionnee && (
+        <View style={styles.filtreStatutBandeau}>
+          <Text style={styles.filtreStatutTexte}>
+            Forme : {LIBELLE_FORME[formeSelectionnee] ?? formeSelectionnee}
+          </Text>
+          <Pressable onPress={() => setFormeSelectionnee(null)} accessibilityRole="button" accessibilityLabel="Retirer le filtre de forme">
+            <Ionicons name="close" size={16} color={Brand.primary} />
+          </Pressable>
+        </View>
+      )}
+
       {/* Filtre statut actif (venant du dashboard) */}
       {statutFiltre && (
         <View style={styles.filtreStatutBandeau}>
@@ -194,49 +312,6 @@ export default function StocksScreen() {
           </Pressable>
         </View>
       )}
-
-      {/* Filtres par forme */}
-      {formesDisponibles.length > 1 && (
-        <View style={styles.filtresSection}>
-          <FlatList
-            data={['TOUS', ...formesDisponibles]}
-            keyExtractor={(item) => item}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8 }}
-            renderItem={({ item }) => {
-              const estTous = item === 'TOUS';
-              const selectionne = estTous ? formeSelectionnee === null : formeSelectionnee === item;
-              return (
-                <Pressable
-                  onPress={() => setFormeSelectionnee(estTous ? null : item)}
-                  style={[styles.filtreChip, selectionne && styles.filtreChipActif]}
-                >
-                  <Text style={[styles.filtreChipTexte, selectionne && styles.filtreChipTexteActif]}>
-                    {estTous ? 'Tous' : LIBELLE_FORME[item] ?? item}
-                  </Text>
-                </Pressable>
-              );
-            }}
-          />
-        </View>
-      )}
-
-      {/* Legende */}
-      <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: Brand.success }]} />
-          <Text style={styles.legendText}>Disponible</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: Brand.warning }]} />
-          <Text style={styles.legendText}>Stock faible</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: Brand.danger }]} />
-          <Text style={styles.legendText}>Rupture</Text>
-        </View>
-      </View>
 
       {chargement && (
         <View style={styles.centered}>
@@ -253,40 +328,74 @@ export default function StocksScreen() {
       {!chargement && !erreur && (
         <FlatList
           data={stocksFiltres}
+          key="grille-3"
           keyExtractor={(item) => String(item.stockId)}
-          contentContainerStyle={styles.listContent}
+          numColumns={3}
+          columnWrapperStyle={styles.ligneGrille}
+          contentContainerStyle={styles.grilleContent}
+          style={{ flex: 1 }}
           ListEmptyComponent={
             <Text style={styles.emptyText}>Aucun produit ne correspond à cette recherche.</Text>
           }
-          renderItem={({ item }) => {
-            const couleurs = STATUT_COULEUR[item.statut];
-            return (
-              <View style={[styles.card, { backgroundColor: couleurs.fond, borderColor: couleurs.bordure }]}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <View style={styles.cardTitleRow}>
-                    <View style={[styles.dot, { backgroundColor: couleurs.point }]} />
-                    <Text style={styles.cardTitle}>{item.nomProduit}</Text>
-                  </View>
-                  <Text style={styles.cardSubtitle}>
-                    {item.quantite} unité{item.quantite > 1 ? 's' : ''}
-                    {item.statut === 'STOCK_FAIBLE' ? ` (seuil ${item.seuilAlerte})` : ''}
-                    {' · '}
-                    {item.prix.toLocaleString('fr-FR')} GNF
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={() => ouvrirEdition(item)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Modifier ${item.nomProduit}`}
-                  style={styles.editButton}
-                >
-                  <Ionicons name="create-outline" size={17} color={Colors.light.textSecondary} />
-                </Pressable>
+          renderItem={({ item }) => (
+            <Pressable onPress={() => ouvrirEdition(item)} style={styles.carte}>
+              <View style={styles.cartePhoto}>
+                {item.imageUrl ? (
+                  <Image
+                    source={{ uri: `${API_BASE_URL}${item.imageUrl}` }}
+                    style={styles.cartePhotoImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Ionicons name="image-outline" size={18} color={Brand.textFaint} />
+                )}
               </View>
-            );
-          }}
+              <Text style={styles.carteNom} numberOfLines={2}>{item.nomProduit}</Text>
+              <Text style={styles.carteQuantite}>
+                {item.quantite} en stock
+              </Text>
+              <Text style={styles.cartePrix}>{item.prix.toLocaleString('fr-FR')}</Text>
+            </Pressable>
+          )}
         />
       )}
+
+      {/* Menu burger : liste des formes en tiroir, par-dessus l'ecran */}
+      <Modal
+        visible={menuFormesOuvert}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuFormesOuvert(false)}
+      >
+        <Pressable style={styles.menuOverlay} onPress={() => setMenuFormesOuvert(false)}>
+          <Pressable style={styles.menuTiroir} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.menuTitre}>Filtrer par forme</Text>
+            <FlatList
+              data={['TOUS', ...formesDisponibles]}
+              keyExtractor={(item) => item}
+              contentContainerStyle={{ gap: 4 }}
+              renderItem={({ item }) => {
+                const estTous = item === 'TOUS';
+                const selectionne = estTous ? formeSelectionnee === null : formeSelectionnee === item;
+                return (
+                  <Pressable
+                    onPress={() => {
+                      setFormeSelectionnee(estTous ? null : item);
+                      setMenuFormesOuvert(false);
+                    }}
+                    style={[styles.menuItem, selectionne && styles.menuItemActif]}
+                  >
+                    <Text style={[styles.menuItemTexte, selectionne && styles.menuItemTexteActif]}>
+                      {estTous ? 'Toutes les formes' : LIBELLE_FORME[item] ?? item}
+                    </Text>
+                    {selectionne && <Ionicons name="checkmark" size={18} color={Brand.primary} />}
+                  </Pressable>
+                );
+              }}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Bottom nav */}
       <View style={[styles.bottomNav, { paddingBottom: 12 + insets.bottom }]}>
@@ -421,6 +530,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   bandeauTitle: { fontWeight: '800', fontSize: 18, color: Colors.light.background },
+  bandeauActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  exportButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   addButton: {
     width: 34,
     height: 34,
@@ -429,8 +547,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  searchSection: { paddingHorizontal: Spacing.four, paddingTop: Spacing.four },
+  searchSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.four,
+  },
+  burgerButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: Colors.light.backgroundElement,
+    borderWidth: 1.5,
+    borderColor: Brand.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   searchBox: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -441,7 +576,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   searchInput: { flex: 1, fontSize: 14, color: Colors.light.text, paddingVertical: 12 },
-  filtresSection: { paddingHorizontal: Spacing.four, paddingTop: 12 },
   filtreStatutBandeau: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -454,44 +588,79 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   filtreStatutTexte: { fontSize: 12.5, fontWeight: '700', color: Brand.primary },
-  filtreChip: {
-    paddingVertical: 7,
-    paddingHorizontal: 13,
-    borderRadius: 999,
-    backgroundColor: Brand.chipBg,
-  },
-  filtreChipActif: { backgroundColor: Brand.primary },
-  filtreChipTexte: { fontSize: 12.5, fontWeight: '600', color: Colors.light.text },
-  filtreChipTexteActif: { color: '#FFFFFF' },
-  legend: { flexDirection: 'row', gap: 14, paddingHorizontal: Spacing.four, paddingTop: 12 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  legendDot: { width: 8, height: 8, borderRadius: 999 },
-  legendText: { fontSize: 11.5, fontWeight: '600', color: Colors.light.textSecondary },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.four },
   erreurText: { fontSize: 14, color: Brand.danger, textAlign: 'center' },
-  emptyText: { fontSize: 13.5, color: Brand.textFaint, textAlign: 'center', marginTop: Spacing.four },
-  listContent: { padding: Spacing.four, gap: 10 },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderRadius: 14,
-    marginBottom: 10,
+  emptyText: {
+    fontSize: 13.5,
+    color: Brand.textFaint,
+    textAlign: 'center',
+    marginTop: Spacing.four,
+    width: '100%',
   },
-  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  dot: { width: 7, height: 7, borderRadius: 999 },
-  cardTitle: { fontSize: 14.5, fontWeight: '700', color: Colors.light.text },
-  cardSubtitle: { fontSize: 12.5, color: Colors.light.textSecondary, marginTop: 3 },
-  editButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+
+  grilleContent: { padding: Spacing.three, gap: 8 },
+  ligneGrille: { gap: 8, alignItems: 'flex-start' },
+  carte: {
+    width: '31.5%',
+    backgroundColor: Colors.light.backgroundElement,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    borderRadius: 11,
+    padding: 7,
+    gap: 4,
+  },
+  cartePhoto: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 8,
     backgroundColor: Brand.chipBg,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  cartePhotoImage: { width: '100%', height: '100%' },
+  carteNom: { fontSize: 10, fontWeight: '700', color: Colors.light.text, lineHeight: 12.5 },
+  carteQuantite: { fontSize: 8.5, color: Brand.textFaint },
+  cartePrix: { fontSize: 9.5, fontWeight: '800', color: Colors.light.text },
+
+  // Menu burger : tiroir des formes en overlay
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(28, 36, 32, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  menuTiroir: {
+    backgroundColor: Colors.light.backgroundElement,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 18,
+    paddingHorizontal: Spacing.four,
+    paddingBottom: 28,
+    maxHeight: '70%',
+    gap: 10,
+  },
+  menuTitre: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.light.text,
+    marginBottom: 4,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+  },
+  menuItemActif: { backgroundColor: Brand.chipBg },
+  menuItemTexte: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.light.textSecondary,
+  },
+  menuItemTexteActif: { color: Brand.primary, fontWeight: '800' },
+
   bottomNav: {
     flexDirection: 'row',
     borderTopWidth: 1,

@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator, Linking, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, ActivityIndicator, Linking, Image, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, Brand, Spacing } from '@/constants/theme';
-import { apiClient, ApiError } from '@/api/client';
+import { apiClient, ApiError, API_BASE_URL } from '@/api/client';
 
 type StockDetail = {
   stockId: number;
@@ -99,7 +99,15 @@ export default function DetailScreen() {
             <View style={styles.rowBetween}>
               <View style={styles.rowStart}>
                 <View style={styles.iconBox}>
-                  <Text style={styles.iconGlyph}>℞</Text>
+                  {detail.imageUrl ? (
+                    <Image
+                      source={{ uri: `${API_BASE_URL}${detail.imageUrl}` }}
+                      style={styles.iconImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Text style={styles.iconGlyph}>℞</Text>
+                  )}
                 </View>
                 {detail.formeProduit && (
                   <View style={styles.formBadge}>
@@ -198,7 +206,9 @@ const styles = StyleSheet.create({
     backgroundColor: Brand.successBg,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  iconImage: { width: '100%', height: '100%' },
   iconGlyph: { fontSize: 20, color: Brand.primary },
   formBadge: { backgroundColor: Brand.successBg, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 999 },
   formBadgeText: { fontSize: 13, fontWeight: '700', color: Brand.primary },

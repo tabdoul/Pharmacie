@@ -1,5 +1,7 @@
 package com.pharmacie.service;
 
+import com.pharmacie.dto.response.ArticleMatchDTO;
+import com.pharmacie.dto.response.PharmacieMatchDTO;
 import com.pharmacie.entity.Pharmacie;
 import com.pharmacie.entity.Produit;
 import com.pharmacie.entity.Stock;
@@ -10,7 +12,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class StockService {
@@ -73,9 +79,10 @@ public class StockService {
     }
 
     public Stock findById(Long id) {
-    return stockRepository.findByIdWithDetails(id)
-        .orElseThrow(() -> new ResourceNotFoundException("Stock introuvable, id=" + id));
-}
+        return stockRepository.findByIdWithDetails(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Stock introuvable, id=" + id));
+    }
+
     /**
      * Tableau des stocks pour le tableau de bord pharmacien.
      */
@@ -88,6 +95,92 @@ public class StockService {
      */
     public List<Stock> rechercherDisponiblesParNomProduit(String nomProduit) {
         return stockRepository.rechercherDisponiblesParNomProduit(nomProduit);
+    }
+
+    /**
+     * Recherche groupee pour une liste de medicaments : regroupe les resultats
+     * par pharmacie plutot que par medicament, pour aider le patient a trouver
+     * une pharmacie qui couvre le plus d'articles de sa liste (ex: ordonnance
+     * avec plusieurs medicaments).
+     */
+    public List<PharmacieMatchDTO> rechercherListe(List<String> noms) {
+        List<String> termes = noms.stream()
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .distinct()
+            .toList();
+
+        if (termes.isEmpty()) {
+            return List.of();
+        }
+
+        // pharmacieId -> (terme demande -> meilleur stock trouve pour ce terme chez cette pharmacie)
+        Map<Long, Map<String, Stock>> stocksParPharmacieEtTerme = new LinkedHashMap<>();
+        Map<Long, Pharmacie> pharmaciesParId = new LinkedHashMap<>();
+
+        for (String terme : termes) {
+            List<Stock> resultats = stockRepository.rechercherDisponiblesParNomProduit(terme);
+
+            // Si plusieurs stocks correspondent au meme terme dans la meme pharmacie
+            // (rare, mais possible si plusieurs produits partagent un mot), on garde
+            // le moins cher.
+            Map<Long, Stock> meilleurParPharmacie = new LinkedHashMap<>();
+            for (Stock s : resultats) {
+                Long pharmacieId = s.getPharmacie().getId();
+                Stock actuel = meilleurParPharmacie.get(pharmacieId);
+                if (actuel == null || s.getPrix().compareTo(actuel.getPrix()) < 0) {
+                    meilleurParPharmacie.put(pharmacieId, s);
+                }
+            }
+
+            for (Map.Entry<Long, Stock> entree : meilleurParPharmacie.entrySet()) {
+                stocksParPharmacieEtTerme
+                    .computeIfAbsent(entree.getKey(), k -> new LinkedHashMap<>())
+                    .put(terme, entree.getValue());
+                pharmaciesParId.putIfAbsent(entree.getKey(), entree.getValue().getPharmacie());
+            }
+        }
+
+        List<PharmacieMatchDTO> resultatsFinaux = new ArrayList<>();
+
+        for (Map.Entry<Long, Map<String, Stock>> entree : stocksParPharmacieEtTerme.entrySet()) {
+            Long pharmacieId = entree.getKey();
+            Map<String, Stock> stocksParTerme = entree.getValue();
+            Pharmacie pharmacie = pharmaciesParId.get(pharmacieId);
+
+            List<ArticleMatchDTO> articles = new ArrayList<>();
+            int trouves = 0;
+            BigDecimal total = BigDecimal.ZERO;
+
+            for (String terme : termes) {
+                Stock stock = stocksParTerme.get(terme);
+                if (stock != null) {
+                    trouves++;
+                    total = total.add(stock.getPrix());
+                    articles.add(new ArticleMatchDTO(
+                        terme, true, stock.getProduit().getNom(),
+                        stock.getProduit().getForme() != null ? stock.getProduit().getForme().name() : null,
+                        stock.getPrix(), stock.getId()
+                    ));
+                } else {
+                    articles.add(new ArticleMatchDTO(terme, false, null, null, null, null));
+                }
+            }
+
+            resultatsFinaux.add(new PharmacieMatchDTO(
+                pharmacieId, pharmacie.getNom(), pharmacie.getVille(), pharmacie.getQuartier(),
+                pharmacie.getTelephone(), trouves, termes.size(), total, articles
+            ));
+        }
+
+        // Tri : le plus d'articles trouves en premier, puis le prix total le plus bas
+        // pour departager les pharmacies a egalite de couverture.
+        resultatsFinaux.sort(
+            Comparator.comparingInt(PharmacieMatchDTO::getNombreTrouves).reversed()
+                .thenComparing(PharmacieMatchDTO::getPrixTotal)
+        );
+
+        return resultatsFinaux;
     }
 
     @Transactional

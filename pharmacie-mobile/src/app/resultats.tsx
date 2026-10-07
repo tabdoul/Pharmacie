@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, Pressable, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, Pressable, FlatList, ActivityIndicator, Image, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, Brand, Spacing } from '@/constants/theme';
-import { apiClient, ApiError } from '@/api/client';
+import { apiClient, ApiError, API_BASE_URL } from '@/api/client';
 import { storage } from '@/lib/storage';
 
 type StockRecherche = {
@@ -18,6 +18,12 @@ type StockRecherche = {
 
 const QUARTIER_PATIENT_KEY = 'quartier_patient';
 
+const LIBELLE_FORME: Record<string, string> = {
+  COMPRIME: 'Comprimé', GELULE: 'Gélule', SIROP: 'Sirop', INJECTABLE: 'Injectable',
+  POMMADE: 'Pommade', CREME: 'Crème', SUPPOSITOIRE: 'Suppositoire', POUDRE: 'Poudre',
+  GOUTTES: 'Gouttes', PATCH: 'Patch', SPRAY: 'Spray', AUTRE: 'Autre',
+};
+
 export default function ResultatsScreen() {
   const router = useRouter();
   const { nom } = useLocalSearchParams<{ nom: string }>();
@@ -28,6 +34,7 @@ export default function ResultatsScreen() {
 
   const [quartiers, setQuartiers] = useState<string[]>([]);
   const [monQuartier, setMonQuartier] = useState<string | null>(null);
+  const [formeFiltre, setFormeFiltre] = useState<string | null>(null);
 
   // Charge le quartier memorise, et la liste des quartiers disponibles
   useEffect(() => {
@@ -57,6 +64,7 @@ export default function ResultatsScreen() {
     let annule = false;
     setChargement(true);
     setErreur(null);
+    setFormeFiltre(null);
 
     apiClient
       .get<StockRecherche[]>(`/api/public/recherche?nom=${encodeURIComponent(nom)}`)
@@ -77,16 +85,23 @@ export default function ResultatsScreen() {
     };
   }, [nom]);
 
+  // Formes disponibles parmi les resultats de cette recherche (pour le filtre)
+  const formesDisponibles = Array.from(
+    new Set(resultats.map((r) => r.formeProduit).filter((f): f is string => !!f))
+  ).sort();
+
   // Tri : meme quartier que le patient en premier, puis prix croissant
   // a l'interieur de chaque groupe (meme quartier / autres quartiers).
-  const resultatsTries = [...resultats].sort((a, b) => {
-    if (monQuartier) {
-      const aMatch = a.quartier === monQuartier ? 0 : 1;
-      const bMatch = b.quartier === monQuartier ? 0 : 1;
-      if (aMatch !== bMatch) return aMatch - bMatch;
-    }
-    return a.prix - b.prix;
-  });
+  const resultatsTries = [...resultats]
+    .filter((r) => !formeFiltre || r.formeProduit === formeFiltre)
+    .sort((a, b) => {
+      if (monQuartier) {
+        const aMatch = a.quartier === monQuartier ? 0 : 1;
+        const bMatch = b.quartier === monQuartier ? 0 : 1;
+        if (aMatch !== bMatch) return aMatch - bMatch;
+      }
+      return a.prix - b.prix;
+    });
 
   return (
     <View style={styles.container}>
@@ -103,6 +118,28 @@ export default function ResultatsScreen() {
           <Text style={styles.searchPillText}>{nom}</Text>
         </View>
       </View>
+
+      {formesDisponibles.length > 1 && (
+        <View style={styles.formeSection}>
+          <Text style={styles.formeLabel}>Forme</Text>
+          <View style={styles.formeChips}>
+            {formesDisponibles.map((forme) => {
+              const selectionne = formeFiltre === forme;
+              return (
+                <Pressable
+                  key={forme}
+                  onPress={() => setFormeFiltre((precedent) => (precedent === forme ? null : forme))}
+                  style={[styles.formeChip, selectionne && styles.formeChipActive]}
+                >
+                  <Text style={[styles.formeChipText, selectionne && styles.formeChipTextActive]}>
+                    {LIBELLE_FORME[forme] ?? forme}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      )}
 
       {quartiers.length > 0 && (
         <View style={styles.quartierSection}>
@@ -142,7 +179,9 @@ export default function ResultatsScreen() {
         <View style={styles.centered}>
           <Text style={styles.videTitle}>Aucun résultat</Text>
           <Text style={styles.videText}>
-            Aucune pharmacie n'a "{nom}" en stock pour le moment.
+            {formeFiltre
+              ? `Aucune pharmacie n'a "${nom}" sous cette forme pour le moment.`
+              : `Aucune pharmacie n'a "${nom}" en stock pour le moment.`}
           </Text>
         </View>
       )}
@@ -171,7 +210,15 @@ export default function ResultatsScreen() {
                 style={styles.card}
               >
                 <View style={styles.iconBox}>
-                  <Text style={styles.iconGlyph}>℞</Text>
+                  {item.imageUrl ? (
+                    <Image
+                      source={{ uri: `${API_BASE_URL}${item.imageUrl}` }}
+                      style={styles.iconImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Text style={styles.iconGlyph}>℞</Text>
+                  )}
                 </View>
                 <View style={styles.cardBody}>
                   <View style={styles.cardTitleRow}>
@@ -231,6 +278,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   searchPillText: { fontSize: 15, fontWeight: '600', color: Colors.light.text },
+  formeSection: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
+    paddingBottom: 4,
+    gap: 8,
+    backgroundColor: Colors.light.background,
+  },
+  formeLabel: { fontSize: 12.5, fontWeight: '600', color: Colors.light.textSecondary },
+  formeChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  formeChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 13,
+    borderRadius: 999,
+    backgroundColor: Colors.light.backgroundElement,
+    borderWidth: 1.5,
+    borderColor: Brand.border,
+  },
+  formeChipActive: { backgroundColor: Brand.primary, borderColor: Brand.primary },
+  formeChipText: { fontSize: 13, fontWeight: '600', color: Colors.light.text },
+  formeChipTextActive: { color: '#FFFFFF' },
   quartierSection: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
@@ -277,7 +344,9 @@ const styles = StyleSheet.create({
     backgroundColor: Brand.successBg,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  iconImage: { width: '100%', height: '100%' },
   iconGlyph: { fontSize: 24, color: Brand.primary },
   cardBody: { flex: 1, gap: 5, minWidth: 0 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },

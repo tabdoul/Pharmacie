@@ -81,8 +81,6 @@ export default function DashboardScreen() {
   const nombreFaibles = stocks.filter((s) => s.statut === 'STOCK_FAIBLE').length;
   const nombreRuptures = stocks.filter((s) => s.statut === 'RUPTURE').length;
 
-  const valeurTotaleStock = stocks.reduce((somme, s) => somme + s.quantite * s.prix, 0);
-
   const derniereMaj = stocks.length
     ? stocks.reduce((plusRecent, s) => (s.dateDerniereMaj > plusRecent ? s.dateDerniereMaj : plusRecent), stocks[0].dateDerniereMaj)
     : null;
@@ -145,17 +143,6 @@ export default function DashboardScreen() {
             <RefreshControl refreshing={rafraichissement} onRefresh={() => charger(true)} tintColor={Brand.primary} />
           }
         >
-          {/* Valeur totale du stock */}
-          <View style={styles.valeurCard}>
-            <View style={styles.valeurIconCircle}>
-              <Ionicons name="wallet-outline" size={20} color={Brand.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.valeurLabel}>Valeur totale du stock</Text>
-              <Text style={styles.valeurMontant}>{valeurTotaleStock.toLocaleString('fr-FR')} GNF</Text>
-            </View>
-          </View>
-
           {/* Repartition par statut */}
           <View style={styles.summaryRow}>
             <Pressable
@@ -218,17 +205,24 @@ export default function DashboardScreen() {
           </View>
 
           {/* Alertes récentes */}
-          <Text style={styles.sectionTitle}>Alertes récentes</Text>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionTitle}>Alertes récentes</Text>
+            {notifsNonLues.length > 0 && (
+              <Pressable onPress={() => router.push('/pharmacien/notifications')} accessibilityRole="button">
+                <Text style={styles.voirToutLien}>Voir tout ({notifsNonLues.length})</Text>
+              </Pressable>
+            )}
+          </View>
           {notifsNonLues.length === 0 ? (
             <View style={styles.emptyAlertBox}>
               <Ionicons name="checkmark-circle-outline" size={20} color={Brand.success} />
               <Text style={styles.emptyAlertText}>Aucune alerte pour le moment.</Text>
             </View>
           ) : (
-            notifsNonLues.map((notif) => (
+            notifsNonLues.slice(0, 3).map((notif) => (
               <Pressable
                 key={notif.id}
-                onPress={() => router.push('/pharmacien/stocks')}
+                onPress={() => router.push('/pharmacien/notifications')}
                 style={styles.alertCard}
               >
                 <View style={styles.alertIconBox}>
@@ -300,30 +294,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   emptyButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
-  valeurCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    backgroundColor: Colors.light.backgroundElement,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: Spacing.three,
-    shadowColor: '#1C2420',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
-  valeurIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 999,
-    backgroundColor: Brand.successBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  valeurLabel: { fontSize: 12, fontWeight: '600', color: Colors.light.textSecondary },
-  valeurMontant: { fontSize: 19, fontWeight: '800', color: Colors.light.text, marginTop: 2 },
   summaryRow: { flexDirection: 'row', gap: 10 },
   summaryCard: {
     flex: 1,
@@ -394,15 +364,21 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   secondaryActionText: { color: Brand.primary, fontWeight: '700', fontSize: 13.5 },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.five,
+    marginBottom: 10,
+  },
   sectionTitle: {
     fontSize: 12.5,
     fontWeight: '700',
     color: Brand.textFaint,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
-    marginTop: Spacing.five,
-    marginBottom: 10,
   },
+  voirToutLien: { fontSize: 12.5, fontWeight: '700', color: Brand.primary },
   emptyAlertBox: {
     flexDirection: 'row',
     alignItems: 'center',

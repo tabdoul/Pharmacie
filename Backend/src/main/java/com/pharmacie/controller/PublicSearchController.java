@@ -1,13 +1,18 @@
 package com.pharmacie.controller;
 
+import com.pharmacie.dto.request.RechercheListeRequest;
+import com.pharmacie.dto.response.PharmacieMatchDTO;
 import com.pharmacie.dto.response.StockDetailDTO;
 import com.pharmacie.dto.response.StockRechercheDTO;
 import com.pharmacie.entity.Stock;
 import com.pharmacie.service.PharmacieService;
 import com.pharmacie.service.StockService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -50,6 +55,18 @@ public class PublicSearchController {
     @GetMapping("/quartiers")
     public ResponseEntity<List<String>> listerQuartiers() {
         return ResponseEntity.ok(pharmacieService.findQuartiersDisponibles());
+    }
+
+    /**
+     * Recherche groupee pour une liste de medicaments (ex: contenu d'une
+     * ordonnance) : renvoie les pharmacies triees par nombre d'articles
+     * disponibles, avec le detail de ce qui est trouve ou non pour chacune.
+     */
+    @PostMapping("/recherche-liste")
+    public ResponseEntity<List<PharmacieMatchDTO>> rechercherListe(
+        @Valid @RequestBody RechercheListeRequest requete
+    ) {
+        return ResponseEntity.ok(stockService.rechercherListe(requete.getNoms()));
     }
 
     /**

@@ -10,13 +10,14 @@ import {
   ScrollView,
   Image,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Brand, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
-import { apiClient, ApiError, API_BASE_URL } from '@/api/client';
+import { apiClient, ApiError } from '@/api/client';
 
 type Produit = {
   id: number;
@@ -37,15 +38,11 @@ const LIBELLE_FORME: Record<string, string> = {
   GOUTTES: 'Gouttes', PATCH: 'Patch', SPRAY: 'Spray', AUTRE: 'Autre',
 };
 
-type Etape = 'formulaire' | 'ajouterStock';
-
 export default function AjouterProduitScreen() {
   const router = useRouter();
   const { token } = useAuth();
 
-  const [etape, setEtape] = useState<Etape>('formulaire');
-
-  // Formulaire de creation
+  // Produit (nouveau ou existant)
   const [nom, setNom] = useState('');
   const [forme, setForme] = useState<string | null>(null);
   const [description, setDescription] = useState('');
@@ -54,24 +51,23 @@ export default function AjouterProduitScreen() {
   // Detection de doublons pendant la saisie
   const [correspondances, setCorrespondances] = useState<Produit[]>([]);
   const [rechercheEnCours, setRechercheEnCours] = useState(false);
+  const [produitExistantChoisi, setProduitExistantChoisi] = useState<Produit | null>(null);
 
-  // Produit choisi (existant ou juste cree) + etape ajout au stock
-  const [produitChoisi, setProduitChoisi] = useState<Produit | null>(null);
+  // Stock a creer avec ce produit
   const [quantite, setQuantite] = useState('');
   const [seuilAlerte, setSeuilAlerte] = useState('5');
   const [prix, setPrix] = useState('');
 
+  // Photo du produit (optionnelle) -- uploadee seulement a la soumission,
+  // une fois l'id du produit connu (creation ou produit existant).
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+
   const [enregistrement, setEnregistrement] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
 
-  // Photo du produit (optionnelle)
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [photoEnvoyee, setPhotoEnvoyee] = useState(false);
-  const [envoiPhotoEnCours, setEnvoiPhotoEnCours] = useState(false);
-
   // Detection en direct des doublons potentiels pendant la saisie du nom
   useEffect(() => {
-    if (!token || nom.trim().length < 3) {
+    if (produitExistantChoisi || !token || nom.trim().length < 3) {
       setCorrespondances([]);
       return;
     }
@@ -95,54 +91,22 @@ export default function AjouterProduitScreen() {
       annule = true;
       clearTimeout(delai);
     };
-  }, [nom, token]);
+  }, [nom, token, produitExistantChoisi]);
 
   const choisirProduitExistant = (produit: Produit) => {
-    setProduitChoisi(produit);
-    setEtape('ajouterStock');
+    setProduitExistantChoisi(produit);
+    setNom(produit.nom);
+    setForme(produit.forme);
+    setDescription(produit.description ?? '');
+    setCorrespondances([]);
     setErreur(null);
   };
 
-  const creerProduit = async () => {
-    if (!token) return;
-    if (!nom.trim()) {
-      setErreur('Le nom du produit est obligatoire.');
-      return;
-    }
-    setEnregistrement(true);
-    setErreur(null);
-    try {
-      const produit = await apiClient.post<Produit>(
-        '/api/pharmacien/produits',
-        { nom: nom.trim(), forme, imageUrl: null, description: description.trim() || null },
-        token
-      );
-      setProduitChoisi(produit);
-      setEtape('ajouterStock');
-    } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : 'Échec de la création du produit.');
-    } finally {
-      setEnregistrement(false);
-    }
-  };
-
-  const uploaderPhoto = async (uri: string) => {
-    if (!token || !produitChoisi) return;
-    setEnvoiPhotoEnCours(true);
-    try {
-      await apiClient.uploadFile(
-        `/api/pharmacien/produits/${produitChoisi.id}/image`,
-        'image',
-        { uri, name: 'photo.jpg', type: 'image/jpeg' },
-        token
-      );
-      setPhotoEnvoyee(true);
-    } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : "Échec de l'envoi de la photo.");
-      setPhotoUri(null);
-    } finally {
-      setEnvoiPhotoEnCours(false);
-    }
+  const annulerProduitExistant = () => {
+    setProduitExistantChoisi(null);
+    setNom('');
+    setForme(null);
+    setDescription('');
   };
 
   const choisirPhotoGalerie = async () => {
@@ -159,10 +123,7 @@ export default function AjouterProduitScreen() {
         aspect: [1, 1],
       });
       if (!resultat.canceled && resultat.assets && resultat.assets[0]) {
-        const uri = resultat.assets[0].uri;
-        setPhotoUri(uri);
-        setPhotoEnvoyee(false);
-        uploaderPhoto(uri);
+        setPhotoUri(resultat.assets[0].uri);
       }
     } catch (e) {
       setErreur(
@@ -184,10 +145,7 @@ export default function AjouterProduitScreen() {
         aspect: [1, 1],
       });
       if (!resultat.canceled && resultat.assets && resultat.assets[0]) {
-        const uri = resultat.assets[0].uri;
-        setPhotoUri(uri);
-        setPhotoEnvoyee(false);
-        uploaderPhoto(uri);
+        setPhotoUri(resultat.assets[0].uri);
       }
     } catch (e) {
       setErreur(
@@ -196,8 +154,15 @@ export default function AjouterProduitScreen() {
     }
   };
 
-  const ajouterAuStock = async () => {
-    if (!token || !produitChoisi) return;
+  const soumettre = async () => {
+    if (!token) return;
+    setErreur(null);
+
+    const nomFinal = nom.trim();
+    if (!produitExistantChoisi && !nomFinal) {
+      setErreur('Le nom du produit est obligatoire.');
+      return;
+    }
 
     const quantiteNum = Number(quantite);
     const seuilNum = Number(seuilAlerte);
@@ -217,242 +182,224 @@ export default function AjouterProduitScreen() {
     }
 
     setEnregistrement(true);
-    setErreur(null);
     try {
+      const produit: Produit = produitExistantChoisi
+        ? produitExistantChoisi
+        : await apiClient.post<Produit>(
+            '/api/pharmacien/produits',
+            { nom: nomFinal, forme, imageUrl: null, description: description.trim() || null },
+            token
+          );
+
+      if (photoUri) {
+        try {
+          await apiClient.uploadFile(
+            `/api/pharmacien/produits/${produit.id}/image`,
+            'image',
+            { uri: photoUri, name: 'photo.jpg', type: 'image/jpeg' },
+            token
+          );
+        } catch (e) {
+          // Le produit et le stock sont tout de meme crees : on ne bloque
+          // pas toute l'operation pour un echec d'upload de la photo.
+          console.error('Erreur upload photo:', e);
+        }
+      }
+
       await apiClient.post(
         '/api/pharmacien/stocks',
-        { produitId: produitChoisi.id, quantite: quantiteNum, seuilAlerte: seuilNum, prix: prixNum },
+        { produitId: produit.id, quantite: quantiteNum, seuilAlerte: seuilNum, prix: prixNum },
         token
       );
-      router.back();
+
+      Alert.alert('Produit ajouté', 'Le produit a bien été ajouté au stock.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
     } catch (e) {
-      setErreur(e instanceof ApiError ? e.message : "Échec de l'ajout au stock.");
+      setErreur(e instanceof ApiError ? e.message : "Échec de l'ajout du produit.");
     } finally {
       setEnregistrement(false);
     }
   };
 
-  const retour = () => {
-    if (etape === 'ajouterStock') {
-      setEtape('formulaire');
-      setErreur(null);
-      return;
-    }
-    router.back();
-  };
-
   return (
     <View style={styles.container}>
       <View style={styles.bandeau}>
-        <Pressable onPress={retour} accessibilityRole="button" accessibilityLabel="Retour">
+        <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Retour">
           <Ionicons name="arrow-back" size={20} color={Colors.light.background} />
         </Pressable>
-        <Text style={styles.bandeauTitle}>
-          {etape === 'formulaire' ? 'Ajouter un produit' : 'Ajouter au stock'}
-        </Text>
+        <Text style={styles.bandeauTitle}>Ajouter un produit</Text>
       </View>
 
-      {/* Etape 1 : formulaire de creation, avec detection de doublons */}
-      {etape === 'formulaire' && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.form}>
-          <View style={styles.field}>
-            <Text style={styles.label}>Nom du produit</Text>
-            <TextInput
-              value={nom}
-              onChangeText={setNom}
-              placeholder="ex : Paracétamol 500mg"
-              placeholderTextColor={Brand.textFaint}
-              style={styles.input}
-              autoFocus
-            />
-          </View>
-
-          {rechercheEnCours && (
-            <View style={styles.checkingRow}>
-              <ActivityIndicator size="small" color={Brand.textFaint} />
-              <Text style={styles.checkingText}>Vérification des doublons…</Text>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.form}>
+        {!produitExistantChoisi ? (
+          <>
+            <View style={styles.field}>
+              <Text style={styles.label}>Nom du produit</Text>
+              <TextInput
+                value={nom}
+                onChangeText={setNom}
+                placeholder="ex : Paracétamol 500mg"
+                placeholderTextColor={Brand.textFaint}
+                style={styles.input}
+                autoFocus
+              />
             </View>
-          )}
 
-          {!rechercheEnCours && correspondances.length > 0 && (
-            <View style={styles.doublonBox}>
-              <View style={styles.doublonHeader}>
-                <Ionicons name="alert-circle-outline" size={16} color={Brand.warning} />
-                <Text style={styles.doublonTitre}>
-                  Ce produit existe peut-être déjà dans le catalogue
+            {rechercheEnCours && (
+              <View style={styles.checkingRow}>
+                <ActivityIndicator size="small" color={Brand.textFaint} />
+                <Text style={styles.checkingText}>Vérification des doublons…</Text>
+              </View>
+            )}
+
+            {!rechercheEnCours && correspondances.length > 0 && (
+              <View style={styles.doublonBox}>
+                <View style={styles.doublonHeader}>
+                  <Ionicons name="alert-circle-outline" size={16} color={Brand.warning} />
+                  <Text style={styles.doublonTitre}>
+                    Ce produit existe peut-être déjà dans le catalogue
+                  </Text>
+                </View>
+                {correspondances.map((item) => (
+                  <Pressable key={item.id} onPress={() => choisirProduitExistant(item)} style={styles.doublonItem}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.doublonItemNom}>{item.nom}</Text>
+                      {item.forme && (
+                        <Text style={styles.doublonItemForme}>{LIBELLE_FORME[item.forme] ?? item.forme}</Text>
+                      )}
+                    </View>
+                    <Text style={styles.doublonItemAction}>Utiliser celui-ci</Text>
+                  </Pressable>
+                ))}
+                <Text style={styles.doublonHint}>
+                  Aucun ne correspond ? Continuez ci-dessous pour créer un nouveau produit.
                 </Text>
               </View>
-              {correspondances.map((item) => (
-                <Pressable key={item.id} onPress={() => choisirProduitExistant(item)} style={styles.doublonItem}>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.doublonItemNom}>{item.nom}</Text>
-                    {item.forme && (
-                      <Text style={styles.doublonItemForme}>{LIBELLE_FORME[item.forme] ?? item.forme}</Text>
-                    )}
-                  </View>
-                  <Text style={styles.doublonItemAction}>Utiliser celui-ci</Text>
-                </Pressable>
-              ))}
-              <Text style={styles.doublonHint}>
-                Aucun ne correspond ? Continuez ci-dessous pour créer un nouveau produit.
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.field}>
-            <Text style={styles.label}>Forme (optionnel)</Text>
-            <Pressable onPress={() => setModaleFormeOuverte(true)} style={styles.selecteur}>
-              <Text style={styles.selecteurTexte}>
-                {forme ? LIBELLE_FORME[forme] : 'Choisir une forme'}
-              </Text>
-              <Ionicons name="chevron-down" size={16} color={Brand.textFaint} />
-            </Pressable>
-          </View>
-
-          <View style={styles.field}>
-            <Text style={styles.label}>Description (optionnel)</Text>
-            <TextInput
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Usage, indication..."
-              placeholderTextColor={Brand.textFaint}
-              style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
-              multiline
-            />
-          </View>
-
-          {erreur && (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{erreur}</Text>
-            </View>
-          )}
-
-          <Pressable
-            onPress={creerProduit}
-            disabled={enregistrement}
-            style={[styles.submitButton, enregistrement && styles.submitButtonDisabled]}
-          >
-            {enregistrement ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <>
-                <Text style={styles.submitText}>Créer ce produit</Text>
-                <Ionicons name="arrow-forward" size={17} color="#FFFFFF" />
-              </>
             )}
-          </Pressable>
-        </ScrollView>
-      )}
 
-      {/* Etape 2 : quantite / seuil / prix + photo */}
-      {etape === 'ajouterStock' && produitChoisi && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.form}>
+            <View style={styles.field}>
+              <Text style={styles.label}>Forme (optionnel)</Text>
+              <Pressable onPress={() => setModaleFormeOuverte(true)} style={styles.selecteur}>
+                <Text style={styles.selecteurTexte}>
+                  {forme ? LIBELLE_FORME[forme] : 'Choisir une forme'}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={Brand.textFaint} />
+              </Pressable>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Description (optionnel)</Text>
+              <TextInput
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Usage, indication..."
+                placeholderTextColor={Brand.textFaint}
+                style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+                multiline
+              />
+            </View>
+          </>
+        ) : (
           <View style={styles.produitRecapCard}>
             <View style={styles.resultIcon}>
               <Ionicons name="medkit-outline" size={18} color={Brand.primary} />
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.resultNom}>{produitChoisi.nom}</Text>
-              {produitChoisi.forme && (
-                <Text style={styles.resultForme}>{LIBELLE_FORME[produitChoisi.forme] ?? produitChoisi.forme}</Text>
+              <Text style={styles.resultNom}>{produitExistantChoisi.nom}</Text>
+              {produitExistantChoisi.forme && (
+                <Text style={styles.resultForme}>
+                  {LIBELLE_FORME[produitExistantChoisi.forme] ?? produitExistantChoisi.forme}
+                </Text>
               )}
             </View>
+            <Pressable onPress={annulerProduitExistant} hitSlop={8}>
+              <Ionicons name="close-circle" size={22} color={Brand.textFaint} />
+            </Pressable>
           </View>
+        )}
 
-          {/* Photo du produit (optionnelle) */}
-          <View style={styles.field}>
-            <Text style={styles.label}>Photo du produit (optionnel)</Text>
-            <View style={styles.photoRow}>
-              <View style={styles.photoPreview}>
-                {photoUri ? (
-                  <Image source={{ uri: photoUri }} style={styles.photoImage} />
-                ) : produitChoisi.imageUrl ? (
-                  <Image source={{ uri: `${API_BASE_URL}${produitChoisi.imageUrl}` }} style={styles.photoImage} />
-                ) : (
-                  <Ionicons name="image-outline" size={28} color={Brand.textFaint} />
-                )}
-                {envoiPhotoEnCours && (
-                  <View style={styles.photoOverlay}>
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  </View>
-                )}
-                {photoEnvoyee && !envoiPhotoEnCours && (
-                  <View style={styles.photoBadgeOk}>
-                    <Ionicons name="checkmark" size={12} color="#FFFFFF" />
-                  </View>
-                )}
-              </View>
-              <View style={{ flex: 1, gap: 8 }}>
-                <Pressable onPress={choisirPhotoGalerie} style={styles.photoButton}>
-                  <Ionicons name="images-outline" size={16} color={Brand.primary} />
-                  <Text style={styles.photoButtonText}>Galerie</Text>
-                </Pressable>
-                <Pressable onPress={choisirPhotoCamera} style={styles.photoButton}>
-                  <Ionicons name="camera-outline" size={16} color={Brand.primary} />
-                  <Text style={styles.photoButtonText}>Prendre une photo</Text>
-                </Pressable>
-              </View>
+        {/* Photo du produit (optionnelle) */}
+        <View style={styles.field}>
+          <Text style={styles.label}>Photo du produit (optionnel)</Text>
+          <View style={styles.photoRow}>
+            <View style={styles.photoPreview}>
+              {photoUri ? (
+                <Image source={{ uri: photoUri }} style={styles.photoImage} />
+              ) : (
+                <Ionicons name="image-outline" size={28} color={Brand.textFaint} />
+              )}
+            </View>
+            <View style={{ flex: 1, gap: 8 }}>
+              <Pressable onPress={choisirPhotoGalerie} style={styles.photoButton}>
+                <Ionicons name="images-outline" size={16} color={Brand.primary} />
+                <Text style={styles.photoButtonText}>Galerie</Text>
+              </Pressable>
+              <Pressable onPress={choisirPhotoCamera} style={styles.photoButton}>
+                <Ionicons name="camera-outline" size={16} color={Brand.primary} />
+                <Text style={styles.photoButtonText}>Prendre une photo</Text>
+              </Pressable>
             </View>
           </View>
+        </View>
 
-          {erreur && (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{erreur}</Text>
-            </View>
+        {erreur && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{erreur}</Text>
+          </View>
+        )}
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Quantité en stock</Text>
+          <TextInput
+            value={quantite}
+            onChangeText={setQuantite}
+            keyboardType="numeric"
+            placeholder="0"
+            placeholderTextColor={Brand.textFaint}
+            style={styles.input}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Seuil d'alerte (stock faible)</Text>
+          <TextInput
+            value={seuilAlerte}
+            onChangeText={setSeuilAlerte}
+            keyboardType="numeric"
+            placeholder="5"
+            placeholderTextColor={Brand.textFaint}
+            style={styles.input}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Prix (GNF)</Text>
+          <TextInput
+            value={prix}
+            onChangeText={setPrix}
+            keyboardType="numeric"
+            placeholder="0"
+            placeholderTextColor={Brand.textFaint}
+            style={styles.input}
+          />
+        </View>
+
+        <Pressable
+          onPress={soumettre}
+          disabled={enregistrement}
+          style={[styles.submitButton, enregistrement && styles.submitButtonDisabled]}
+        >
+          {enregistrement ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <Text style={styles.submitText}>Ajouter le produit</Text>
+              <Ionicons name="checkmark" size={18} color="#FFFFFF" />
+            </>
           )}
-
-          <View style={styles.field}>
-            <Text style={styles.label}>Quantité en stock</Text>
-            <TextInput
-              value={quantite}
-              onChangeText={setQuantite}
-              keyboardType="numeric"
-              placeholder="0"
-              placeholderTextColor={Brand.textFaint}
-              style={styles.input}
-            />
-          </View>
-
-          <View style={styles.field}>
-            <Text style={styles.label}>Seuil d'alerte (stock faible)</Text>
-            <TextInput
-              value={seuilAlerte}
-              onChangeText={setSeuilAlerte}
-              keyboardType="numeric"
-              placeholder="5"
-              placeholderTextColor={Brand.textFaint}
-              style={styles.input}
-            />
-          </View>
-
-          <View style={styles.field}>
-            <Text style={styles.label}>Prix (GNF)</Text>
-            <TextInput
-              value={prix}
-              onChangeText={setPrix}
-              keyboardType="numeric"
-              placeholder="0"
-              placeholderTextColor={Brand.textFaint}
-              style={styles.input}
-            />
-          </View>
-
-          <Pressable
-            onPress={ajouterAuStock}
-            disabled={enregistrement}
-            style={[styles.submitButton, enregistrement && styles.submitButtonDisabled]}
-          >
-            {enregistrement ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <>
-                <Text style={styles.submitText}>Ajouter au stock</Text>
-                <Ionicons name="checkmark" size={18} color="#FFFFFF" />
-              </>
-            )}
-          </Pressable>
-        </ScrollView>
-      )}
+        </Pressable>
+      </ScrollView>
 
       {/* Modale de selection de la forme */}
       <Modal
@@ -554,13 +501,12 @@ const styles = StyleSheet.create({
     backgroundColor: Brand.successBg,
     borderRadius: 14,
     padding: 14,
-    marginBottom: 4,
   },
   resultIcon: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: Brand.successBg,
+    backgroundColor: Colors.light.backgroundElement,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -580,27 +526,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   photoImage: { width: '100%', height: '100%' },
-  photoOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(28, 36, 32, 0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoBadgeOk: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    width: 18,
-    height: 18,
-    borderRadius: 999,
-    backgroundColor: Brand.success,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   photoButton: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -49,6 +49,17 @@ public class ProduitService {
         return produitRepository.save(existant);
     }
 
+    /**
+     * Mise a jour uniquement de l'URL de l'image, suite a un upload de photo
+     * (voir ProduitImageController).
+     */
+    @Transactional
+    public Produit mettreAJourImage(Long id, String imageUrl) {
+        Produit existant = findById(id);
+        existant.setImageUrl(imageUrl);
+        return produitRepository.save(existant);
+    }
+
     @Transactional
     public void supprimer(Long id) {
         if (!produitRepository.existsById(id)) {

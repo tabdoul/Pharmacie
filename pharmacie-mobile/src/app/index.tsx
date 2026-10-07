@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Brand, Spacing } from '@/constants/theme';
 
 const ETAPES = [
@@ -27,6 +28,7 @@ const ETAPES = [
 
 export default function AccueilScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.container}>
@@ -44,7 +46,7 @@ export default function AccueilScreen() {
           <View style={styles.heroIconCircle}>
             <Ionicons name="medical" size={34} color={Brand.primary} />
           </View>
-          <Text style={styles.heroTitle}>La bonne pharmacie, du premier coup</Text>
+          <Text style={styles.heroTitle}>La bonne pharmacie du premier coup</Text>
           <Text style={styles.heroSubtitle}>
             Comparez les prix et la disponibilité de vos médicaments près de chez vous, avant de
             vous déplacer.
@@ -65,7 +67,7 @@ export default function AccueilScreen() {
               <Ionicons name="medical-outline" size={24} color="#2B5F8A" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.adTitle}>CHU de Thierno</Text>
+              <Text style={styles.adTitle}>Hôpital Docteur Bademba</Text>
               <Text style={styles.adSubtitle}>
                 Bilans de santé complets — prenez rendez-vous dès aujourd'hui
               </Text>
@@ -77,22 +79,22 @@ export default function AccueilScreen() {
           </View>
         </View>
 
-        {/* Comment ca marche : titre + 3 mini-cartes cote a cote */}
-        <Text style={styles.sectionTitle}>Comment ça marche</Text>
-        <View style={styles.etapesRow}>
+        {/* Comment ca marche : petites cartes cote a cote */}
+        <Text style={styles.sectionLabel}>COMMENT ÇA MARCHE</Text>
+        <View style={styles.etapesGrille}>
           {ETAPES.map((etape, index) => (
-            <View key={index} style={styles.etapeCard}>
+            <View key={index} style={styles.etapeCarte}>
               <View style={[styles.etapeIconCircle, { backgroundColor: etape.iconeBg }]}>
-                <Ionicons name={etape.icone} size={17} color={etape.iconeCouleur} />
+                <Ionicons name={etape.icone} size={18} color={etape.iconeCouleur} />
               </View>
-              <Text style={styles.etapeText}>{etape.texte}</Text>
+              <Text style={styles.etapeTexteCarte}>{etape.texte}</Text>
             </View>
           ))}
         </View>
       </ScrollView>
 
       {/* CTA fixe en bas */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Spacing.three + insets.bottom }]}>
         <Pressable
           onPress={() => router.push('/recherche')}
           style={styles.ctaButton}
@@ -138,7 +140,12 @@ const styles = StyleSheet.create({
   },
   logoEmoji: { fontSize: 13 },
   appName: { fontWeight: '800', fontSize: 15, color: Colors.light.background },
-  scrollContent: { padding: Spacing.four, paddingBottom: Spacing.four },
+  // Moins d'espace au-dessus de la carte hero : elle remonte juste sous le bandeau.
+  scrollContent: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.two,
+  },
   heroCard: {
     backgroundColor: Colors.light.backgroundElement,
     borderRadius: 24,
@@ -173,28 +180,27 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 19,
   },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
+  sectionLabel: {
+    marginTop: 22,
+    marginBottom: 10,
+    fontSize: 12,
+    fontWeight: '800',
     color: Brand.primary,
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    marginTop: 20,
-    marginBottom: 10,
-    textAlign :'center'
+    letterSpacing: 0.6,
   },
-  etapesRow: {
+  etapesGrille: {
     flexDirection: 'row',
     gap: 10,
   },
-  etapeCard: {
+  etapeCarte: {
     flex: 1,
-    backgroundColor: Colors.light.backgroundElement,
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
     alignItems: 'center',
     gap: 8,
+    backgroundColor: Colors.light.backgroundElement,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
     shadowColor: '#1C2420',
     shadowOpacity: 0.05,
     shadowRadius: 3,
@@ -202,21 +208,23 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   etapeIconCircle: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  etapeText: {
-    fontSize: 11.5,
-    fontWeight: '600',
+  etapeTexteCarte: {
+    fontSize: 12.5,
+    fontWeight: '700',
     color: Colors.light.text,
     textAlign: 'center',
-    lineHeight: 15,
+    lineHeight: 16,
   },
   footer: {
-    padding: Spacing.four,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.four,
     borderTopWidth: 1,
     borderTopColor: Brand.border,
     backgroundColor: Colors.light.backgroundElement,
