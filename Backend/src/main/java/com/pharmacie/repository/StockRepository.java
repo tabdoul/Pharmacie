@@ -1,6 +1,7 @@
 package com.pharmacie.repository;
 
 import com.pharmacie.entity.Stock;
+import com.pharmacie.util.TexteUtil;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -44,16 +45,25 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
 
     /**
      * Recherche patient : uniquement les pharmacies ou le produit est disponible
-     * (quantite > 0), par nom de produit.
+     * (quantite > 0), par nom de produit. Insensible aux accents et aux majuscules :
+     * "paracetamol" trouve "Paracétamol 500mg".
+     */
+    default List<Stock> rechercherDisponiblesParNomProduit(String nom) {
+        return rechercherDisponiblesParNomNormalise(TexteUtil.normaliser(nom));
+    }
+
+    /**
+     * Requete reelle : le parametre doit deja etre normalise (voir TexteUtil).
+     * Necessite l'extension PostgreSQL "unaccent" (creee dans data.sql).
      */
     @Query("""
         SELECT s FROM Stock s
         JOIN FETCH s.produit p
         JOIN FETCH s.pharmacie ph
-        WHERE LOWER(p.nom) LIKE LOWER(CONCAT('%', :nom, '%'))
+        WHERE LOWER(FUNCTION('unaccent', p.nom)) LIKE CONCAT('%', :nomNormalise, '%')
         AND s.quantite > 0
         """)
-    List<Stock> rechercherDisponiblesParNomProduit(@Param("nom") String nom);
+    List<Stock> rechercherDisponiblesParNomNormalise(@Param("nomNormalise") String nomNormalise);
 
     /**
      * Stocks d'une pharmacie dont la quantite est descendue au niveau ou en dessous

@@ -13,6 +13,7 @@ import com.pharmacie.security.SecurityUtils;
 import com.pharmacie.service.PharmacieService;
 import com.pharmacie.service.ProduitService;
 import com.pharmacie.service.StockService;
+import com.pharmacie.util.TexteUtil;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -85,7 +86,8 @@ public class StockController {
     }
 
     /**
-     * Import en masse : CSV avec les colonnes "Produit;Forme;Quantite;Seuil alerte;Prix".
+     * Import en masse : CSV avec les colonnes "Produit;Forme;Quantite;Seuil alerte;Prix"
+     * et, en option, une 6e colonne "Image" (URL http/https de la photo du produit).
      * Un produit deja present dans le stock de la pharmacie est ignore (jamais ecrase).
      * Un produit inconnu est cree au passage.
      */
@@ -125,6 +127,7 @@ public class StockController {
                 String quantiteTexte = champs.length > 2 ? champs[2].trim() : "";
                 String seuilTexte = champs.length > 3 ? champs[3].trim() : "";
                 String prixTexte = champs.length > 4 ? champs[4].trim() : "";
+                String imageTexte = champs.length > 5 ? champs[5].trim() : "";
 
                 if (nom.isEmpty()) {
                     erreurs.add("Ligne " + numeroLigne + " : nom de produit manquant, ligne ignoree.");
@@ -149,7 +152,20 @@ public class StockController {
                 }
 
                 Produit.Forme forme = resoudreForme(formeTexte);
-                Produit produit = trouverOuCreerProduit(nom, forme);
+
+                // Colonne "Image" facultative : une URL complete (http/https). Sinon ignoree.
+                String imageUrl = null;
+                if (!imageTexte.isEmpty()) {
+                    if (imageTexte.toLowerCase().startsWith("http://")
+                        || imageTexte.toLowerCase().startsWith("https://")) {
+                        imageUrl = imageTexte;
+                    } else {
+                        erreurs.add("Ligne " + numeroLigne + " (" + nom
+                            + ") : image ignoree (l'URL doit commencer par http:// ou https://).");
+                    }
+                }
+
+                Produit produit = trouverOuCreerProduit(nom, forme, imageUrl);
 
                 try {
                     stockService.ajouterAuStock(pharmacie, produit, quantite, seuilAlerte, prix);
@@ -212,14 +228,19 @@ public class StockController {
         }
     }
 
-    private Produit trouverOuCreerProduit(String nom, Produit.Forme forme) {
+    /**
+     * Retrouve le produit par son nom, ou le cree. L'image du fichier n'est appliquee
+     * qu'a la creation : un produit existant (et sa photo) n'est jamais modifie par l'import.
+     */
+    private Produit trouverOuCreerProduit(String nom, Produit.Forme forme, String imageUrl) {
         return produitService.rechercherParNom(nom).stream()
-            .filter(p -> p.getNom().equalsIgnoreCase(nom))
+            .filter(p -> TexteUtil.cleComparaison(p.getNom()).equals(TexteUtil.cleComparaison(nom)))
             .findFirst()
             .orElseGet(() -> {
                 Produit nouveau = new Produit();
                 nouveau.setNom(nom);
                 nouveau.setForme(forme);
+                nouveau.setImageUrl(imageUrl);
                 return produitService.creer(nouveau);
             });
     }

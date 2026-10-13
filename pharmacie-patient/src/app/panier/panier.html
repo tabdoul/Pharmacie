@@ -1,0 +1,112 @@
+<div class="page">
+  <header class="entete">
+    <div class="colonne tete">
+      <button type="button" class="fleche" aria-label="Retour" (click)="retour()">
+        <app-icone nom="retour" [taille]="22" />
+      </button>
+      <div class="titres">
+        <h1>Mon panier</h1>
+        <p>
+          {{ panier.nombre() }} article{{ panier.nombre() > 1 ? 's' : '' }}{{
+            nombreAchetes() > 0
+              ? ' · ' + nombreAchetes() + ' acheté' + (nombreAchetes() > 1 ? 's' : '')
+              : ''
+          }}
+        </p>
+      </div>
+      @if (panier.nombre() > 0) {
+        <button type="button" class="vider" aria-label="Vider le panier" (click)="panier.vider()">
+          <app-icone nom="corbeille" [taille]="20" />
+        </button>
+      }
+    </div>
+  </header>
+
+  <main class="colonne contenu">
+    @if (panier.nombre() === 0) {
+      <div class="vide">
+        <span class="vide-icone"><app-icone nom="panier" [taille]="44" /></span>
+        <p class="vide-titre">Votre panier est vide</p>
+        <p class="vide-texte">
+          Ajoutez des médicaments depuis les résultats de recherche pour les retrouver ici.
+        </p>
+      </div>
+    } @else {
+      @if (nombreAchetes() > 0) {
+        <button type="button" class="retirer-achetes" (click)="panier.retirerAchetes()">
+          <app-icone nom="coche-double" [taille]="16" />
+          Retirer les {{ nombreAchetes() }} article{{ nombreAchetes() > 1 ? 's' : '' }} déjà
+          acheté{{ nombreAchetes() > 1 ? 's' : '' }}
+        </button>
+      }
+
+      <ul class="groupes">
+        @for (groupe of groupes(); track groupe.pharmacieId) {
+          <li class="carte groupe">
+            <div class="groupe-tete">
+              <div class="groupe-corps">
+                <p class="groupe-nom">{{ groupe.nomPharmacie }}</p>
+                <p class="groupe-lieu">
+                  📍 {{ groupe.quartier ? groupe.quartier + ', ' : '' }}{{ groupe.ville }}
+                </p>
+              </div>
+              @if (groupe.telephone) {
+                <a
+                  class="appel"
+                  [href]="'tel:' + groupe.telephone"
+                  [attr.aria-label]="'Appeler ' + groupe.nomPharmacie"
+                >
+                  <app-icone nom="telephone" [taille]="17" />
+                </a>
+              }
+            </div>
+
+            <div class="articles">
+              @for (article of groupe.articles; track article.stockId) {
+                <div class="article">
+                  <button
+                    type="button"
+                    class="case"
+                    role="checkbox"
+                    [class.cochee]="article.achete"
+                    [attr.aria-checked]="article.achete"
+                    [attr.aria-label]="'Marquer ' + article.nomProduit + ' comme acheté'"
+                    (click)="panier.basculerAchete(article.stockId)"
+                  >
+                    <app-icone [nom]="article.achete ? 'case-cochee' : 'case'" [taille]="22" />
+                  </button>
+
+                  <a class="article-corps" [routerLink]="['/produit', article.stockId]">
+                    <span class="article-nom" [class.achete]="article.achete">{{ article.nomProduit }}</span>
+                    <span class="article-prix" [class.achete]="article.achete">
+                      {{ prix(article.prix) }} GNF
+                    </span>
+                  </a>
+
+                  <button
+                    type="button"
+                    class="retirer"
+                    [attr.aria-label]="'Retirer ' + article.nomProduit"
+                    (click)="panier.retirer(article.stockId)"
+                  >
+                    <app-icone nom="fermer" [taille]="16" />
+                  </button>
+                </div>
+              }
+            </div>
+
+            <div class="sous-total">
+              <span class="sous-total-label">Sous-total</span>
+              <span class="sous-total-valeur">{{ prix(groupe.total) }} GNF</span>
+            </div>
+          </li>
+        }
+      </ul>
+
+      <div class="total-general">
+        <span class="total-general-label">Total général</span>
+        <span class="total-general-valeur">{{ prix(totalGeneral()) }} GNF</span>
+      </div>
+    }
+  </main>
+</div>

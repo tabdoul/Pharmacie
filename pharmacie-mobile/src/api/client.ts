@@ -1,10 +1,56 @@
-export const API_BASE_URL = 'http://192.168.1.170:8080';
+import { tokenExpire } from '../lib/jwt';
+
+export const API_BASE_URL = 'http://192.168.1.165:8080';
+
+const DELAI_REQUETE_MS = 15000;
+const DELAI_UPLOAD_MS = 60000;
+
+const MESSAGE_RESEAU =
+  'Impossible de joindre le serveur. Vérifiez votre connexion internet puis réessayez.';
+const MESSAGE_DELAI = 'Le serveur met trop de temps à répondre. Réessayez dans un instant.';
 
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
     super(message);
     this.status = status;
+  }
+
+  /** true quand la requete n'a jamais abouti (reseau coupe, serveur eteint, delai depasse) */
+  get estErreurReseau(): boolean {
+    return this.status === 0;
+  }
+}
+
+// --- Session expiree -------------------------------------------------------
+// L'AuthContext enregistre ici la fonction a appeler quand le backend refuse
+// le token (401, ou 403 avec un token reellement expire).
+let sessionExpireeHandler: (() => void) | null = null;
+
+export function setSessionExpireeHandler(handler: (() => void) | null) {
+  sessionExpireeHandler = handler;
+}
+
+function verifierSession(status: number, token?: string) {
+  if (!token || !sessionExpireeHandler) return;
+  if (status === 401 || (status === 403 && tokenExpire(token))) {
+    sessionExpireeHandler();
+  }
+}
+
+// --- Appels reseau ---------------------------------------------------------
+async function fetchSecurise(url: string, init: RequestInit, delaiMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const minuteur = setTimeout(() => controller.abort(), delaiMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new ApiError(0, MESSAGE_DELAI);
+    }
+    throw new ApiError(0, MESSAGE_RESEAU);
+  } finally {
+    clearTimeout(minuteur);
   }
 }
 
@@ -21,12 +67,15 @@ async function request<T>(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  const response = await fetchSecurise(
+    `${API_BASE_URL}${path}`,
+    { ...options, headers },
+    DELAI_REQUETE_MS
+  );
 
   if (!response.ok) {
+    verifierSession(response.status, token);
+
     let message = `Erreur ${response.status}`;
     try {
       const body = await response.json();
@@ -68,13 +117,15 @@ async function uploadFile<T>(
   const blob = await reponseFichier.blob();
   formData.append(champ, blob, fichier.name);
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: 'POST',
-    body: formData,
-    headers,
-  });
+  const response = await fetchSecurise(
+    `${API_BASE_URL}${path}`,
+    { method: 'POST', body: formData, headers },
+    DELAI_UPLOAD_MS
+  );
 
   if (!response.ok) {
+    verifierSession(response.status, token);
+
     let message = `Erreur ${response.status}`;
     try {
       const data = await response.json();

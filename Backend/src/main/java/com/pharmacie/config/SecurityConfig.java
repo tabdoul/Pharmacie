@@ -40,19 +40,21 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-    // Page d'erreur Spring Boot : doit rester accessible, sinon les erreurs
-    // (400, 500...) sont masquees par un 403 avant meme d'etre affichees.
-    .requestMatchers("/error").permitAll()
-    // Authentification
-    .requestMatchers("/api/auth/**").permitAll()
-    // Interface patient : recherche publique, sans compte necessaire
-    .requestMatchers("/api/public/**").permitAll()
-    // Administration : protege manuellement par cle partagee (X-Admin-Key),
-    // pas par JWT pharmacien. Voir AdminPharmacieController.
-    .requestMatchers("/api/admin/**").permitAll()
-    // Tout le reste (back-office pharmacien) requiert un token valide
-    .anyRequest().authenticated()
-)
+                // Page d'erreur Spring Boot : doit rester accessible, sinon les erreurs
+                // (400, 500...) sont masquees par un 403 avant meme d'etre affichees.
+                .requestMatchers("/error").permitAll()
+                // Authentification des pharmacies
+                .requestMatchers("/api/auth/**").permitAll()
+                // Connexion et premiere installation de l'administrateur
+                .requestMatchers("/api/admin/auth/**").permitAll()
+                // Interface patient : recherche publique, sans compte necessaire
+                .requestMatchers("/api/public/**").permitAll()
+                // Administration : reservee aux tokens portant le role ADMIN.
+                // Un token de pharmacie n'y donne pas acces.
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                // Tout le reste (back-office pharmacien) requiert un token valide
+                .anyRequest().authenticated()
+            )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -72,14 +74,14 @@ public class SecurityConfig {
     }
 
     @Bean
-public DaoAuthenticationProvider authenticationProvider(
-    UserDetailsService userDetailsService,
-    PasswordEncoder passwordEncoder
-) {
-    DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService);
-    provider.setPasswordEncoder(passwordEncoder);
-    return provider;
-}
+    public DaoAuthenticationProvider authenticationProvider(
+        UserDetailsService userDetailsService,
+        PasswordEncoder passwordEncoder
+    ) {
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder);
+        return provider;
+    }
 
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {

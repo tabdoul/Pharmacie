@@ -1,0 +1,57 @@
+<div class="page">
+  <header class="entete">
+    <div class="colonne bandeau">
+      <div class="logo">
+        <span class="logo-badge">💊</span>
+        <span class="logo-nom">Pharma Proche</span>
+      </div>
+      @if (lienPharmacien) {
+        <a class="lien-pharmacien" [href]="lienPharmacien">Connectez-vous</a>
+      }
+    </div>
+  </header>
+
+  <main class="colonne contenu">
+    <section class="hero">
+      <div class="hero-cercle"><app-icone nom="medical" [taille]="34" [epaisseur]="3.2" /></div>
+      <h1>La bonne pharmacie, du premier coup</h1>
+      <p>
+        Comparez les prix et la disponibilité de vos médicaments près de chez vous, avant de vous
+        déplacer.
+      </p>
+    </section>
+
+    <!-- Emplacement publicitaire : contenu statique pour l'instant -->
+    <section class="carte pub">
+      <span class="pub-badge">PUBLICITÉ</span>
+      <div class="pub-ligne">
+        <div class="pub-icone"><app-icone nom="medical" [taille]="24" [epaisseur]="1.8" /></div>
+        <div>
+          <h2>Hôpital National Donka</h2>
+          <p>Bilans de santé complets — prenez rendez-vous dès aujourd'hui</p>
+        </div>
+      </div>
+      <div class="pub-lien">En savoir plus <app-icone nom="fleche" [taille]="13" [epaisseur]="2.4" /></div>
+    </section>
+
+    <h2 class="titre-section etapes-titre">Comment ça marche</h2>
+    <div class="etapes">
+      @for (etape of etapes; track etape.texte) {
+        <div class="etape">
+          <span class="etape-cercle" [style.background]="etape.fond" [style.color]="etape.couleur">
+            <app-icone [nom]="etape.icone" [taille]="17" />
+          </span>
+          <p>{{ etape.texte }}</p>
+        </div>
+      }
+    </div>
+  </main>
+
+  <footer class="pied">
+    <div class="colonne">
+      <button type="button" class="btn-cta" (click)="commencer()">
+        Commencer <app-icone nom="fleche" [taille]="18" />
+      </button>
+    </div>
+  </footer>
+</div>

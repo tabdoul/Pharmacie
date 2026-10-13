@@ -2,7 +2,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, Pressable, FlatList, ActivityIndicator, Image, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, Brand, Spacing } from '@/constants/theme';
-import { apiClient, ApiError, API_BASE_URL } from '@/api/client';
+import { apiClient, ApiError } from '@/api/client';
+import { urlImage } from '@/lib/image';
+import { ErreurChargement } from '@/components/ErreurChargement';
 import { storage } from '@/lib/storage';
 
 type StockRecherche = {
@@ -35,6 +37,7 @@ export default function ResultatsScreen() {
   const [quartiers, setQuartiers] = useState<string[]>([]);
   const [monQuartier, setMonQuartier] = useState<string | null>(null);
   const [formeFiltre, setFormeFiltre] = useState<string | null>(null);
+  const [tentative, setTentative] = useState(0);
 
   // Charge le quartier memorise, et la liste des quartiers disponibles
   useEffect(() => {
@@ -83,7 +86,7 @@ export default function ResultatsScreen() {
     return () => {
       annule = true;
     };
-  }, [nom]);
+  }, [nom, tentative]);
 
   // Formes disponibles parmi les resultats de cette recherche (pour le filtre)
   const formesDisponibles = Array.from(
@@ -102,6 +105,12 @@ export default function ResultatsScreen() {
       }
       return a.prix - b.prix;
     });
+
+  // Une pharmacie peut avoir plusieurs references qui correspondent (dosages differents...) :
+  // on compte les pharmacies distinctes, pas les lignes de stock.
+  const nombrePharmacies = new Set(
+    resultatsTries.map((r) => `${r.nomPharmacie}|${r.ville}|${r.quartier ?? ''}`)
+  ).size;
 
   return (
     <View style={styles.container}>
@@ -170,9 +179,7 @@ export default function ResultatsScreen() {
       )}
 
       {!chargement && erreur && (
-        <View style={styles.centered}>
-          <Text style={styles.erreurText}>{erreur}</Text>
-        </View>
+        <ErreurChargement message={erreur} onRetry={() => setTentative((t) => t + 1)} />
       )}
 
       {!chargement && !erreur && resultatsTries.length === 0 && (
@@ -193,7 +200,10 @@ export default function ResultatsScreen() {
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={
             <Text style={styles.countText}>
-              {resultatsTries.length} pharmacie{resultatsTries.length > 1 ? 's ont' : ' a'} ce produit en stock
+              {nombrePharmacies} pharmacie{nombrePharmacies > 1 ? 's ont' : ' a'} ce produit en stock
+              {resultatsTries.length > nombrePharmacies
+                ? ` (${resultatsTries.length} références)`
+                : ''}
             </Text>
           }
           renderItem={({ item, index }) => {
@@ -212,7 +222,7 @@ export default function ResultatsScreen() {
                 <View style={styles.iconBox}>
                   {item.imageUrl ? (
                     <Image
-                      source={{ uri: `${API_BASE_URL}${item.imageUrl}` }}
+                      source={{ uri: urlImage(item.imageUrl)! }}
                       style={styles.iconImage}
                       resizeMode="cover"
                     />

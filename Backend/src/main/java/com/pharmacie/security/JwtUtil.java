@@ -16,15 +16,21 @@ import java.util.function.Function;
 @Component
 public class JwtUtil {
 
+    public static final String ROLE_ADMIN = "ADMIN";
+
     private final SecretKey cle;
     private final long expirationMs;
+    private final long expirationAdminMs;
 
     public JwtUtil(
         @Value("${app.jwt.secret}") String secret,
-        @Value("${app.jwt.expiration-ms}") long expirationMs
+        @Value("${app.jwt.expiration-ms}") long expirationMs,
+        // Session admin plus courte que celle des pharmacies : 8 h par defaut
+        @Value("${app.jwt.admin-expiration-ms:28800000}") long expirationAdminMs
     ) {
         this.cle = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMs = expirationMs;
+        this.expirationAdminMs = expirationAdminMs;
     }
 
     public String genererToken(String identifiantConnexion, Long pharmacieId) {
@@ -40,6 +46,20 @@ public class JwtUtil {
             .compact();
     }
 
+    /** Token d'un administrateur : porte le role ADMIN, jamais de pharmacieId. */
+    public String genererTokenAdmin(String identifiant) {
+        Date maintenant = new Date();
+        Date expiration = new Date(maintenant.getTime() + expirationAdminMs);
+
+        return Jwts.builder()
+            .subject(identifiant)
+            .claim("role", ROLE_ADMIN)
+            .issuedAt(maintenant)
+            .expiration(expiration)
+            .signWith(cle, SignatureAlgorithm.HS256)
+            .compact();
+    }
+
     public String extraireIdentifiantConnexion(String token) {
         return extraireClaim(token, Claims::getSubject);
     }
@@ -47,6 +67,11 @@ public class JwtUtil {
     public Long extrairePharmacieId(String token) {
         Claims claims = extraireToutesLesClaims(token);
         return claims.get("pharmacieId", Long.class);
+    }
+
+    /** Role porte par le token ("ADMIN"), ou null pour un token de pharmacie. */
+    public String extraireRole(String token) {
+        return extraireToutesLesClaims(token).get("role", String.class);
     }
 
     public boolean estValide(String token, String identifiantConnexion) {

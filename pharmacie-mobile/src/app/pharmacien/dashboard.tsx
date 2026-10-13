@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Brand, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { apiClient, ApiError } from '@/api/client';
+import { ErreurChargement } from '@/components/ErreurChargement';
 
 type StockPharmacien = {
   stockId: number;
@@ -113,11 +114,7 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {!chargement && erreur && (
-        <View style={styles.centered}>
-          <Text style={styles.erreurText}>{erreur}</Text>
-        </View>
-      )}
+      {!chargement && erreur && <ErreurChargement message={erreur} onRetry={() => charger()} />}
 
       {!chargement && !erreur && stocks.length === 0 && (
         <View style={styles.centeredEmpty}>

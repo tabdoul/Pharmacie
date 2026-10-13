@@ -1,0 +1,40 @@
+<main class="ecran">
+  <form class="carte" (ngSubmit)="creer()">
+    <div class="marque" aria-hidden="true">✚</div>
+    <h1>Première installation</h1>
+    <p class="sous-titre">Créez le compte administrateur de la plateforme.</p>
+
+    <div class="bandeau attention">
+      Le <strong>code d'installation</strong> est affiché dans la console du backend (Spring Boot),
+      au démarrage. Il n'est valable que pour cette installation.
+    </div>
+
+    @if (erreur()) {
+      <div class="bandeau erreur" role="alert">{{ erreur() }}</div>
+    }
+
+    <label class="champ">
+      <span>Code d'installation</span>
+      <input name="code" [(ngModel)]="code" autocomplete="off" placeholder="XXXX-XXXX" autofocus required />
+    </label>
+
+    <label class="champ">
+      <span>Identifiant administrateur</span>
+      <input name="identifiant" [(ngModel)]="identifiant" autocomplete="username" required />
+    </label>
+
+    <label class="champ">
+      <span>Mot de passe (10 caractères minimum)</span>
+      <input name="motDePasse" type="password" [(ngModel)]="motDePasse" autocomplete="new-password" required />
+    </label>
+
+    <label class="champ">
+      <span>Confirmer le mot de passe</span>
+      <input name="confirmation" type="password" [(ngModel)]="confirmation" autocomplete="new-password" required />
+    </label>
+
+    <button class="btn" type="submit" [disabled]="enCours()">
+      {{ enCours() ? 'Création…' : 'Créer le compte' }}
+    </button>
+  </form>
+</main>

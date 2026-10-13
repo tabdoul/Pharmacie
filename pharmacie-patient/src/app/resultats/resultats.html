@@ -1,0 +1,105 @@
+<div class="page">
+  <header class="entete">
+    <div class="colonne tete">
+      <a class="retour" routerLink="/recherche">← Modifier la recherche</a>
+      <div class="pilule">{{ nom() }}</div>
+    </div>
+  </header>
+
+  <main class="colonne contenu">
+    @if (formesDisponibles().length > 1) {
+      <section class="filtre">
+        <p class="filtre-titre">Forme</p>
+        <div class="puces">
+          @for (forme of formesDisponibles(); track forme) {
+            <button
+              type="button"
+              class="puce contour"
+              [class.active]="formeFiltre() === forme"
+              [attr.aria-pressed]="formeFiltre() === forme"
+              (click)="choisirForme(forme)"
+            >
+              {{ nomForme(forme) }}
+            </button>
+          }
+        </div>
+      </section>
+    }
+
+    @if (quartiers().length > 0) {
+      <section class="filtre">
+        <p class="filtre-titre">Mon quartier (optionnel)</p>
+        <div class="puces">
+          @for (quartier of quartiers(); track quartier) {
+            <button
+              type="button"
+              class="puce"
+              [class.active]="monQuartier() === quartier"
+              [attr.aria-pressed]="monQuartier() === quartier"
+              (click)="choisirQuartier(quartier)"
+            >
+              {{ quartier }}
+            </button>
+          }
+        </div>
+      </section>
+    }
+
+    @if (chargement()) {
+      <div class="centre"><span class="spinner" role="status" aria-label="Chargement"></span></div>
+    } @else if (erreur()) {
+      <app-erreur-chargement [message]="erreur()!" (relancer)="relancer()" />
+    } @else if (tries().length === 0) {
+      <div class="centre">
+        <p class="vide-titre">Aucun résultat</p>
+        <p class="vide-texte">
+          @if (formeFiltre()) {
+            Aucune pharmacie n'a "{{ nom() }}" sous cette forme pour le moment.
+          } @else {
+            Aucune pharmacie n'a "{{ nom() }}" en stock pour le moment.
+          }
+        </p>
+      </div>
+    } @else {
+      <p class="compte">
+        {{ nombrePharmacies() }} pharmacie{{ nombrePharmacies() > 1 ? 's ont' : ' a' }} ce produit en
+        stock{{ tries().length > nombrePharmacies() ? ' (' + tries().length + ' références)' : '' }}
+      </p>
+      <ul class="liste">
+        @for (item of tries(); track item.stockId; let i = $index) {
+          <li>
+            <a class="carte resultat" [routerLink]="['/produit', item.stockId]">
+              <span class="icone-boite">
+                @if (image(item); as src) {
+                  <img [src]="src" alt="" loading="lazy" />
+                } @else {
+                  ℞
+                }
+              </span>
+              <span class="corps">
+                <span class="titre-ligne">
+                  <span class="titre">{{ item.nomProduit }}</span>
+                  @if (estMemeQuartier(item)) {
+                    <span class="badge meme">Même quartier</span>
+                  } @else if (estMeilleurPrix(item, i)) {
+                    <span class="badge meilleur">Meilleur prix</span>
+                  }
+                </span>
+                <span class="pharmacie">{{ item.nomPharmacie }}</span>
+                <span class="lieu">📍 {{ item.quartier ? item.quartier + ', ' : '' }}{{ item.ville }}</span>
+              </span>
+              <span class="prix-boite">
+                <span class="prix">{{ prix(item.prix) }}</span>
+                <span class="unite">GNF</span>
+              </span>
+            </a>
+          </li>
+        }
+      </ul>
+      <div class="note">
+        Les écarts de prix ne sont pas toujours suspects : source d'approvisionnement, date de
+        péremption, etc.
+      </div>
+    }
+  </main>
+</div>

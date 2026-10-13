@@ -1,0 +1,40 @@
+<main class="ecran">
+  <form class="carte" (ngSubmit)="seConnecter()">
+    <div class="marque" aria-hidden="true">✚</div>
+    <h1>Administration</h1>
+    <p class="sous-titre">Plateforme Pharmacie · accès réservé</p>
+
+    @if (sessionExpiree) {
+      <div class="bandeau attention" role="status">Votre session a expiré. Reconnectez-vous.</div>
+    }
+    @if (erreur()) {
+      <div class="bandeau erreur" role="alert">{{ erreur() }}</div>
+    }
+
+    <label class="champ">
+      <span>Identifiant</span>
+      <input
+        name="identifiant"
+        [(ngModel)]="identifiant"
+        autocomplete="username"
+        autofocus
+        required
+      />
+    </label>
+
+    <label class="champ">
+      <span>Mot de passe</span>
+      <input
+        name="motDePasse"
+        type="password"
+        [(ngModel)]="motDePasse"
+        autocomplete="current-password"
+        required
+      />
+    </label>
+
+    <button class="btn" type="submit" [disabled]="enCours()">
+      {{ enCours() ? 'Connexion…' : 'Se connecter' }}
+    </button>
+  </form>
+</main>

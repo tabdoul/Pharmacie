@@ -1,0 +1,71 @@
+<div class="page">
+  <header class="entete">
+    <div class="colonne tete">
+      <button type="button" class="fleche" aria-label="Retour aux résultats" (click)="retour()">←</button>
+      <h1>{{ detail()?.nomProduit ?? 'Détail' }}</h1>
+    </div>
+  </header>
+
+  <main class="colonne contenu">
+    @if (chargement()) {
+      <div class="centre"><span class="spinner" role="status" aria-label="Chargement"></span></div>
+    } @else if (erreur()) {
+      <div class="centre"><p class="erreur">{{ erreur() }}</p></div>
+    } @else if (detail(); as d) {
+      <section class="carte bloc">
+        <div class="ligne-entre">
+          <div class="ligne">
+            <span class="icone-boite">
+              @if (image(d); as src) {
+                <img [src]="src" alt="" />
+              } @else {
+                ℞
+              }
+            </span>
+            @if (d.formeProduit) {
+              <span class="forme">{{ forme(d.formeProduit) }}</span>
+            }
+          </div>
+          <div class="dispo"><span class="point"></span>DISPONIBLE</div>
+        </div>
+
+        <div class="prix-ligne">
+          <span class="prix">{{ prix(d.prix) }}</span>
+          <span class="unite">GNF</span>
+        </div>
+
+        @if (d.description) {
+          <p class="description">{{ d.description }}</p>
+        }
+        <p class="maj">Stock mis à jour le {{ date(d.dateDerniereMaj) }}</p>
+      </section>
+
+      <section class="carte bloc">
+        <p class="etiquette">Pharmacie</p>
+        <p class="nom-pharmacie">{{ d.nomPharmacie }}</p>
+
+        <div class="ligne haut">
+          <span>📍</span>
+          <div>
+            <p class="adresse">
+              {{ d.adresse }}{{ d.quartier ? ', ' + d.quartier : '' }}, {{ d.ville }}
+            </p>
+            <a class="maps" [href]="lienMaps(d)" target="_blank" rel="noopener">Voir sur Google Maps →</a>
+          </div>
+        </div>
+
+        @if (d.telephone) {
+          <div class="ligne">
+            <span>📞</span>
+            <span class="telephone">{{ d.telephone }}</span>
+          </div>
+          <a class="btn-cta appel" [href]="lienTel(d)">Appeler la pharmacie</a>
+        }
+      </section>
+
+      <p class="pied-note">
+        Le conseil et l'achat se font uniquement sur place, directement avec le pharmacien.
+      </p>
+    }
+  </main>
+</div>

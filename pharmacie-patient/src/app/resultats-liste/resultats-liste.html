@@ -1,0 +1,157 @@
+<!-- Carte d'une pharmacie (utilisee pour les bonnes correspondances et les autres) -->
+<ng-template #carte let-item let-index="index" let-bonne="bonne">
+  <li class="carte pharmacie" [class.complete]="complet(item)">
+    <button
+      type="button"
+      class="entete-carte"
+      [attr.aria-expanded]="pharmacieOuverte() === item.pharmacieId"
+      (click)="basculerOuverte(item.pharmacieId)"
+    >
+      <span class="entete-corps">
+        <span class="titre-ligne">
+          <span class="titre">{{ item.nomPharmacie }}</span>
+          @if (estMemeQuartier(item)) {
+            <span class="badge meme">Même quartier</span>
+          } @else if (bonne && index === 0) {
+            <span class="badge meilleur">Meilleure couverture</span>
+          }
+        </span>
+        <span class="lieu">📍 {{ item.quartier ? item.quartier + ', ' : '' }}{{ item.ville }}</span>
+        <span class="couverture">
+          <span class="barre"
+            ><span class="remplissage" [class.complete]="complet(item)" [style.width.%]="pourcentage(item)"></span
+          ></span>
+          <span class="fraction" [class.complete]="complet(item)">
+            {{ item.nombreTrouves }}/{{ item.nombreDemandes }}
+          </span>
+        </span>
+      </span>
+      <app-icone [nom]="pharmacieOuverte() === item.pharmacieId ? 'chevron-haut' : 'chevron-bas'" [taille]="18" />
+    </button>
+
+    @if (pharmacieOuverte() === item.pharmacieId) {
+      <div class="detail">
+        @for (article of item.articles; track article.nomDemande) {
+          <div class="ligne-article">
+            @if (cliquable(article)) {
+              <a class="article-info" [routerLink]="['/produit', article.stockId]">
+                <span class="coche"><app-icone nom="coche-cercle" [taille]="17" /></span>
+                <span class="article-corps">
+                  <span class="article-nom">{{ article.nomDemande }}</span>
+                  @if (article.prix !== null) {
+                    <span class="article-prix">{{ prix(article.prix) }} GNF</span>
+                  }
+                </span>
+              </a>
+              <button
+                type="button"
+                class="btn-panier"
+                [class.actif]="dansPanier(article)"
+                [attr.aria-label]="
+                  dansPanier(article)
+                    ? 'Retirer ' + article.nomDemande + ' du panier'
+                    : 'Ajouter ' + article.nomDemande + ' au panier'
+                "
+                (click)="basculerPanier(item, article)"
+              >
+                <app-icone [nom]="dansPanier(article) ? 'coche' : 'plus'" [taille]="15" />
+                {{ dansPanier(article) ? 'Ajouté' : 'Ajouter' }}
+              </button>
+            } @else {
+              <div class="article-info">
+                <span class="croix"><app-icone nom="croix-cercle" [taille]="17" /></span>
+                <span class="article-corps">
+                  <span class="article-nom indisponible">{{ article.nomDemande }}</span>
+                </span>
+              </div>
+            }
+          </div>
+        }
+
+        <div class="total">
+          <span class="total-label">Total (articles disponibles)</span>
+          <span class="total-valeur">{{ prix(item.prixTotal) }} GNF</span>
+        </div>
+
+        @if (item.telephone) {
+          <a class="btn-cta appel" [href]="'tel:' + item.telephone">
+            <app-icone nom="telephone" [taille]="16" />Appeler la pharmacie
+          </a>
+        }
+      </div>
+    }
+  </li>
+</ng-template>
+
+<div class="page">
+  <header class="entete">
+    <div class="colonne tete">
+      <button type="button" class="fleche" aria-label="Retour" (click)="retour()">
+        <app-icone nom="retour" [taille]="22" />
+      </button>
+      <div class="titres">
+        <h1>Résultats de ma liste</h1>
+        <p>
+          {{ articlesDemandes().length }} médicament{{ articlesDemandes().length > 1 ? 's' : '' }}
+          recherché{{ articlesDemandes().length > 1 ? 's' : '' }}
+        </p>
+      </div>
+      <a class="panier" routerLink="/panier" aria-label="Voir mon panier">
+        <app-icone nom="panier" [taille]="20" />
+        @if (panier.nombre() > 0) {
+          <span class="pastille">{{ panier.nombre() }}</span>
+        }
+      </a>
+    </div>
+  </header>
+
+  <main class="colonne contenu">
+    @if (chargement()) {
+      <div class="centre"><span class="spinner" role="status" aria-label="Chargement"></span></div>
+    } @else if (erreur()) {
+      <app-erreur-chargement [message]="erreur()!" (relancer)="relancer()" />
+    } @else if (resultats().length === 0) {
+      <div class="centre">
+        <span class="alerte"><app-icone nom="alerte" [taille]="40" /></span>
+        <p class="vide-titre">Aucune pharmacie trouvée</p>
+        <p class="vide-texte">
+          Aucune pharmacie n'a l'un de ces médicaments en stock pour le moment.
+        </p>
+      </div>
+    } @else {
+      @if (bonnes().length === 0) {
+        <p class="vide-texte aucune">
+          Aucune pharmacie n'a la moitié ou plus des médicaments demandés.
+        </p>
+      }
+      <ul class="liste">
+        @for (item of bonnes(); track item.pharmacieId; let i = $index) {
+          <ng-container
+            [ngTemplateOutlet]="carte"
+            [ngTemplateOutletContext]="{ $implicit: item, index: i, bonne: true }"
+          />
+        }
+      </ul>
+
+      @if (autres().length > 0) {
+        <button type="button" class="bascule-autres" (click)="basculerAutres()">
+          {{ autresDepliees() ? 'Masquer' : 'Voir aussi' }} {{ autres().length }} autre{{
+            autres().length > 1 ? 's' : ''
+          }}
+          pharmacie{{ autres().length > 1 ? 's' : '' }} (couverture partielle)
+          <app-icone [nom]="autresDepliees() ? 'chevron-haut' : 'chevron-bas'" [taille]="16" />
+        </button>
+        @if (autresDepliees()) {
+          <ul class="liste">
+            @for (item of autres(); track item.pharmacieId; let i = $index) {
+              <ng-container
+                [ngTemplateOutlet]="carte"
+                [ngTemplateOutletContext]="{ $implicit: item, index: i, bonne: false }"
+              />
+            }
+          </ul>
+        }
+      }
+    }
+  </main>
+</div>

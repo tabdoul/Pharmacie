@@ -1,0 +1,246 @@
+.page {
+  min-height: 100vh;
+}
+
+.tete {
+  padding: 24px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.retour {
+  align-self: flex-start;
+  color: var(--fond);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.retour:hover {
+  text-decoration: underline;
+}
+
+.pilule {
+  background: var(--surface);
+  color: var(--texte);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.contenu {
+  padding: 0 24px 32px;
+}
+
+.filtre {
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filtre-titre {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--texte-doux);
+}
+
+.puces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.puce {
+  padding: 8px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--puce);
+  color: var(--texte);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.puce.contour {
+  background: var(--surface);
+  border: 1.5px solid var(--bordure);
+}
+
+.puce.active {
+  background: var(--primaire);
+  color: #ffffff;
+}
+
+.puce.contour.active {
+  border-color: var(--primaire);
+}
+
+.centre {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 64px 0;
+  text-align: center;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--bordure);
+  border-top-color: var(--primaire);
+  border-radius: 50%;
+  animation: tourne 0.8s linear infinite;
+}
+
+@keyframes tourne {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.erreur {
+  font-size: 14px;
+  color: var(--danger);
+}
+
+.vide-titre {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.vide-texte {
+  font-size: 14px;
+  color: var(--texte-doux);
+}
+
+.compte {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--texte-doux);
+}
+
+.liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.resultat {
+  display: flex;
+  gap: 14px;
+  padding: 16px;
+  border-width: 1.5px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s;
+}
+
+.resultat:hover {
+  border-color: var(--primaire);
+}
+
+.icone-boite {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: var(--succes-fond);
+  color: var(--primaire);
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.icone-boite img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.corps {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.titre-ligne {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.titre {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.badge.meilleur {
+  background: var(--succes-fond);
+  color: var(--primaire);
+}
+
+.badge.meme {
+  background: var(--alerte-fond);
+  color: var(--alerte);
+}
+
+.pharmacie {
+  font-size: 13px;
+  color: var(--texte-doux);
+}
+
+.lieu {
+  font-size: 12.5px;
+  color: var(--texte-leger);
+}
+
+.prix-boite {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+}
+
+.prix {
+  font-size: 17px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.unite {
+  font-size: 11px;
+  color: var(--texte-leger);
+}
+
+.note {
+  margin-top: 8px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--puce);
+  color: #5b4a20;
+  font-size: 12.5px;
+  line-height: 18px;
+}

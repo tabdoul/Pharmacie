@@ -1,0 +1,210 @@
+.page {
+  min-height: 100vh;
+}
+
+.tete {
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.fleche {
+  border: 0;
+  background: transparent;
+  color: var(--fond);
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+
+.tete h1 {
+  flex: 1;
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--fond);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contenu {
+  padding: 0 24px 32px;
+}
+
+.centre {
+  display: flex;
+  justify-content: center;
+  padding: 64px 0;
+  text-align: center;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--bordure);
+  border-top-color: var(--primaire);
+  border-radius: 50%;
+  animation: tourne 0.8s linear infinite;
+}
+
+@keyframes tourne {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.erreur {
+  font-size: 14px;
+  color: var(--danger);
+}
+
+.bloc {
+  margin-top: 24px;
+  padding: 20px;
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ligne-entre {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ligne {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ligne.haut {
+  align-items: flex-start;
+  margin-top: 0;
+}
+
+.icone-boite {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--succes-fond);
+  color: var(--primaire);
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.icone-boite img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.forme {
+  background: var(--succes-fond);
+  color: var(--primaire);
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dispo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--succes);
+}
+
+.point {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--succes);
+}
+
+.prix-ligne {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.prix {
+  font-size: 30px;
+  font-weight: 800;
+}
+
+.unite {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--texte-leger);
+}
+
+.description {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.maj {
+  font-size: 12px;
+  color: var(--texte-leger);
+}
+
+.etiquette {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--texte-doux);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.nom-pharmacie {
+  font-size: 18px;
+  font-weight: 700;
+  margin-top: -6px;
+}
+
+.adresse {
+  font-size: 14.5px;
+  line-height: 20px;
+}
+
+.maps {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--primaire);
+  text-decoration: none;
+}
+
+.maps:hover {
+  text-decoration: underline;
+}
+
+.telephone {
+  font-size: 14.5px;
+}
+
+.appel {
+  padding: 15px;
+  font-size: 15px;
+  margin-top: 4px;
+}
+
+.pied-note {
+  padding-top: 24px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--texte-leger);
+  text-align: center;
+}

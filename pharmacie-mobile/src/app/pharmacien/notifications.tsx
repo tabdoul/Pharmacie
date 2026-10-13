@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Brand, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { apiClient, ApiError } from '@/api/client';
+import { ErreurChargement } from '@/components/ErreurChargement';
 
 type NotificationPharmacien = {
   id: number;
@@ -102,11 +103,7 @@ export default function NotificationsScreen() {
         </View>
       )}
 
-      {!chargement && erreur && (
-        <View style={styles.centered}>
-          <Text style={styles.erreurText}>{erreur}</Text>
-        </View>
-      )}
+      {!chargement && erreur && <ErreurChargement message={erreur} onRetry={() => charger()} />}
 
       {!chargement && !erreur && (
         <FlatList

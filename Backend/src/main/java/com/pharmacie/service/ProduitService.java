@@ -1,8 +1,10 @@
 package com.pharmacie.service;
 
 import com.pharmacie.entity.Produit;
+import com.pharmacie.exception.ConflictException;
 import com.pharmacie.exception.ResourceNotFoundException;
 import com.pharmacie.repository.ProduitRepository;
+import com.pharmacie.util.TexteUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +21,7 @@ public class ProduitService {
 
     @Transactional
     public Produit creer(Produit produit) {
+        verifierPasDeDoublon(produit.getNom(), null);
         return produitRepository.save(produit);
     }
 
@@ -42,6 +45,7 @@ public class ProduitService {
     @Transactional
     public Produit mettreAJour(Long id, Produit donnees) {
         Produit existant = findById(id);
+        verifierPasDeDoublon(donnees.getNom(), id);
         existant.setNom(donnees.getNom());
         existant.setForme(donnees.getForme());
         existant.setImageUrl(donnees.getImageUrl());
@@ -66,5 +70,19 @@ public class ProduitService {
             throw new ResourceNotFoundException("Produit introuvable, id=" + id);
         }
         produitRepository.deleteById(id);
+    }
+
+
+    private void verifierPasDeDoublon(String nom, Long idAIgnorer) {
+        String cle = TexteUtil.cleComparaison(nom);
+        if (cle.isEmpty()) {
+            return;
+        }
+        for (Produit autre : produitRepository.findByNomContainingIgnoreCase(nom)) {
+            boolean memeProduit = idAIgnorer != null && idAIgnorer.equals(autre.getId());
+            if (!memeProduit && cle.equals(TexteUtil.cleComparaison(autre.getNom()))) {
+                throw new ConflictException("Ce produit existe deja : " + autre.getNom());
+            }
+        }
     }
 }

@@ -1,0 +1,135 @@
+<div class="page">
+  <header class="entete">
+    <div class="colonne tete">
+      <div class="ligne-logo">
+        <a class="retour" routerLink="/" aria-label="Retour à l'accueil">
+          <app-icone nom="retour" [taille]="20" />
+        </a>
+        <span class="logo-badge"><app-icone nom="medkit" [taille]="20" /></span>
+        <span class="nom">Pharma Proche</span>
+      </div>
+      <p class="slogan">Ajoutez un ou plusieurs médicaments, puis lancez la recherche.</p>
+    </div>
+  </header>
+
+  <main class="colonne contenu">
+    <!-- Barre de recherche + bouton d'ajout -->
+    <form class="ligne-recherche" (ngSubmit)="ajouterCourant()">
+      <div class="champ">
+        <app-icone nom="search" [taille]="18" />
+        <input
+          name="valeur"
+          type="text"
+          autocomplete="off"
+          enterkeyhint="done"
+          placeholder="Nom du médicament"
+          aria-label="Nom du médicament"
+          [ngModel]="valeur()"
+          (ngModelChange)="valeur.set($event)"
+        />
+      </div>
+      <button
+        type="submit"
+        class="btn-ajout"
+        [class.actif]="peutAjouter()"
+        [disabled]="!peutAjouter()"
+        aria-label="Ajouter à la liste"
+      >
+        <app-icone nom="plus" [taille]="22" />
+      </button>
+    </form>
+
+    <!-- Mon quartier -->
+    @if (quartiers().length > 0) {
+      <button type="button" class="selecteur" (click)="modaleOuverte.set(true)">
+        <app-icone nom="location" [taille]="18" />
+        <span class="selecteur-texte">
+          {{ monQuartier() ? 'Mon quartier : ' + monQuartier() : 'Choisir mon quartier (optionnel)' }}
+        </span>
+        <app-icone nom="chevron-bas" [taille]="16" />
+      </button>
+    }
+
+    <!-- Ma liste -->
+    <section class="liste">
+      <h2 class="etiquette">
+        Ma liste — {{ nombre() === 0 ? 'vide' : nombre() + ' médicament' + (nombre() > 1 ? 's' : '') }}
+      </h2>
+      @if (nombre() === 0) {
+        <div class="liste-vide">Tapez un médicament ci-dessus et appuyez sur le bouton +</div>
+      } @else {
+        <ul class="articles">
+          @for (article of articles(); track article.id) {
+            <li class="article">
+              <span class="article-icone"><app-icone nom="medkit" [taille]="14" /></span>
+              <span class="article-texte">{{ article.label }}</span>
+              <button
+                type="button"
+                class="article-retirer"
+                [attr.aria-label]="'Retirer ' + article.label"
+                (click)="retirer(article.id)"
+              >
+                <app-icone nom="fermer" [taille]="16" />
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <!-- Ajout rapide -->
+    <section class="rapide">
+      <h2 class="etiquette">Ajout rapide</h2>
+      <div class="puces">
+        @for (label of suggestions; track label) {
+          <button type="button" class="puce" (click)="ajouterSuggestion(label)">+ {{ label }}</button>
+        }
+      </div>
+    </section>
+  </main>
+
+  <footer class="pied">
+    <div class="colonne">
+      <button type="button" class="btn-cta" [disabled]="nombre() === 0" (click)="lancer()">
+        {{ libelleCta() }}
+        @if (nombre() > 0) {
+          <app-icone nom="fleche" [taille]="18" />
+        }
+      </button>
+    </div>
+  </footer>
+
+  @if (modaleOuverte()) {
+    <div class="voile" (click)="modaleOuverte.set(false)">
+      <div
+        class="modale"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Choisir mon quartier"
+        (click)="$event.stopPropagation()"
+      >
+        <h2>Choisir mon quartier</h2>
+        <ul>
+          <li>
+            <button type="button" class="choix" (click)="choisirQuartier(null)">
+              <span>Aucun (tous les quartiers)</span>
+              @if (monQuartier() === null) {
+                <app-icone nom="coche" [taille]="18" />
+              }
+            </button>
+          </li>
+          @for (quartier of quartiers(); track quartier) {
+            <li>
+              <button type="button" class="choix" (click)="choisirQuartier(quartier)">
+                <span>{{ quartier }}</span>
+                @if (monQuartier() === quartier) {
+                  <app-icone nom="coche" [taille]="18" />
+                }
+              </button>
+            </li>
+          }
+        </ul>
+      </div>
+    </div>
+  }
+</div>

@@ -1,0 +1,169 @@
+<header class="barre">
+  <div class="marque-bloc">
+    <span class="logo" aria-hidden="true">✚</span>
+    <div>
+      <h1>Administration</h1>
+      <p>Plateforme Pharmacie</p>
+    </div>
+  </div>
+  <div class="barre-actions">
+    <span class="admin-id">{{ auth.identifiant() }}</span>
+    <button class="btn secondaire" type="button" (click)="auth.deconnexion()">Se déconnecter</button>
+  </div>
+</header>
+
+<main class="page">
+  <div class="titre-ligne">
+    <h2>Pharmacies</h2>
+    <button class="btn secondaire" type="button" (click)="charger()" [disabled]="chargement()">
+      {{ chargement() ? 'Chargement…' : 'Actualiser' }}
+    </button>
+  </div>
+
+  @if (info()) {
+    <div class="bandeau succes" role="status">{{ info() }}</div>
+  }
+
+  @if (erreur()) {
+    <div class="bandeau erreur" role="alert">
+      {{ erreur() }}
+      <button class="lien" type="button" (click)="charger()">Réessayer</button>
+    </div>
+  }
+
+  <div class="outils">
+    <div class="onglets" role="tablist">
+      @for (s of statuts; track s.valeur) {
+        <button
+          type="button"
+          role="tab"
+          class="onglet"
+          [class.actif]="onglet() === s.valeur"
+          [attr.aria-selected]="onglet() === s.valeur"
+          (click)="changerOnglet(s.valeur)"
+        >
+          {{ s.libelle }}
+          <span class="compteur">{{ compteurs()[s.valeur] }}</span>
+        </button>
+      }
+    </div>
+    <input
+      class="recherche"
+      type="search"
+      placeholder="Rechercher (nom, ville, quartier…)"
+      aria-label="Rechercher une pharmacie"
+      [value]="recherche()"
+      (input)="saisirRecherche($any($event.target).value)"
+    />
+  </div>
+
+  <div class="mise-en-page" [class.avec-detail]="selection()">
+    <section class="liste" aria-label="Liste des pharmacies">
+      @if (chargement() && pharmacies().length === 0) {
+        <p class="vide">Chargement…</p>
+      } @else if (liste().length === 0) {
+        <p class="vide">{{ recherche() ? 'Aucun résultat pour cette recherche.' : texteVide() }}</p>
+      } @else {
+        @for (p of liste(); track p.id) {
+          <button
+            type="button"
+            class="ligne"
+            [class.choisie]="selection()?.id === p.id"
+            (click)="choisir(p)"
+          >
+            <span class="ligne-texte">
+              <strong>{{ p.nom }}</strong>
+              <small>{{ p.quartier ? p.quartier + ', ' : '' }}{{ p.ville }}</small>
+            </span>
+            <span class="badge" [class]="'badge ' + p.statutValidation">
+              {{ libelleStatut[p.statutValidation] }}
+            </span>
+          </button>
+        }
+      }
+    </section>
+
+    @if (selection(); as p) {
+      <aside class="detail" aria-label="Détail de la pharmacie">
+        <div class="detail-tete">
+          <div>
+            <h3>{{ p.nom }}</h3>
+            <span class="badge" [class]="'badge ' + p.statutValidation">
+              {{ libelleStatut[p.statutValidation] }}
+            </span>
+          </div>
+          <button class="fermer" type="button" (click)="fermerDetail()" aria-label="Fermer">✕</button>
+        </div>
+
+        <dl class="infos">
+          <div>
+            <dt>Adresse</dt>
+            <dd>{{ p.adresse }}</dd>
+          </div>
+          <div>
+            <dt>Ville</dt>
+            <dd>{{ p.ville }}</dd>
+          </div>
+          <div>
+            <dt>Quartier</dt>
+            <dd>{{ p.quartier || '—' }}</dd>
+          </div>
+          <div>
+            <dt>Téléphone</dt>
+            <dd>{{ p.telephone || '—' }}</dd>
+          </div>
+          <div>
+            <dt>Identifiant de connexion</dt>
+            <dd>{{ p.identifiantConnexion }}</dd>
+          </div>
+        </dl>
+
+        @if (p.statutValidation === 'REJETEE' && p.motifRejet) {
+          <div class="bandeau erreur">
+            <strong>Motif du rejet :</strong> {{ p.motifRejet }}
+          </div>
+        }
+
+        <button class="btn secondaire" type="button" (click)="voirDocument(p)">
+          Voir le document d'agrément
+        </button>
+
+        @if (erreurAction()) {
+          <div class="bandeau erreur" role="alert">{{ erreurAction() }}</div>
+        }
+
+        @if (p.statutValidation === 'EN_ATTENTE') {
+          @if (!modeRejet()) {
+            <div class="actions">
+              <button class="btn" type="button" [disabled]="actionEnCours()" (click)="valider(p)">
+                {{ actionEnCours() ? 'Validation…' : 'Valider' }}
+              </button>
+              <button class="btn secondaire" type="button" [disabled]="actionEnCours()" (click)="ouvrirRejet()">
+                Rejeter
+              </button>
+            </div>
+          } @else {
+            <label class="champ">
+              <span>Motif du rejet (communiqué à la pharmacie)</span>
+              <textarea
+                rows="4"
+                maxlength="500"
+                placeholder="ex : document illisible, à renvoyer."
+                [value]="motif()"
+                (input)="saisirMotif($any($event.target).value)"
+              ></textarea>
+            </label>
+            <div class="actions">
+              <button class="btn danger" type="button" [disabled]="actionEnCours()" (click)="confirmerRejet(p)">
+                {{ actionEnCours() ? 'Rejet…' : 'Confirmer le rejet' }}
+              </button>
+              <button class="btn secondaire" type="button" [disabled]="actionEnCours()" (click)="annulerRejet()">
+                Annuler
+              </button>
+            </div>
+          }
+        }
+      </aside>
+    }
+  </div>
+</main>

@@ -17,10 +17,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Brand, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { apiClient, ApiError, API_BASE_URL } from '@/api/client';
+import { urlImage } from '@/lib/image';
+import { ErreurChargement } from '@/components/ErreurChargement';
 
 type ImportResultat = {
   ajoutes: number;
@@ -70,6 +73,7 @@ export default function StocksScreen() {
   const [suppressionEnCours, setSuppressionEnCours] = useState(false);
   const [exportEnCours, setExportEnCours] = useState(false);
   const [importEnCours, setImportEnCours] = useState(false);
+  const [photoEnCours, setPhotoEnCours] = useState(false);
 
   const charger = useCallback(() => {
     if (!token) return;
@@ -171,6 +175,58 @@ export default function StocksScreen() {
       Alert.alert('Erreur', "Échec de l'export du stock. Réessayez plus tard.");
     } finally {
       setExportEnCours(false);
+    }
+  };
+
+  // Ajoute ou remplace la photo du produit du stock en cours d'edition
+  const changerPhotoProduit = async (source: 'galerie' | 'camera') => {
+    if (!stockEnEdition || !token) return;
+    const produitId = stockEnEdition.produitId;
+
+    try {
+      const permission =
+        source === 'galerie'
+          ? await ImagePicker.requestMediaLibraryPermissionsAsync()
+          : await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        setErreurEdition(
+          source === 'galerie'
+            ? 'Autorisation refusée pour accéder à vos photos.'
+            : "Autorisation refusée pour accéder à l'appareil photo."
+        );
+        return;
+      }
+
+      const options = { quality: 0.7, allowsEditing: true, aspect: [1, 1] as [number, number] };
+      const resultat =
+        source === 'galerie'
+          ? await ImagePicker.launchImageLibraryAsync({ ...options, mediaTypes: ['images'] })
+          : await ImagePicker.launchCameraAsync(options);
+      if (resultat.canceled || !resultat.assets?.[0]) return;
+
+      setPhotoEnCours(true);
+      setErreurEdition(null);
+      const produitMisAJour = await apiClient.uploadFile<{ imageUrl: string | null }>(
+        `/api/pharmacien/produits/${produitId}/image`,
+        'image',
+        { uri: resultat.assets[0].uri, name: 'photo.jpg', type: 'image/jpeg' },
+        token
+      );
+
+      if (produitMisAJour?.imageUrl) {
+        // Suffixe anti-cache : si le fichier garde le meme nom, l'ancienne image ne reste pas affichee
+        const nouvelleUrl = `${produitMisAJour.imageUrl}${produitMisAJour.imageUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
+        setStocks((precedent) =>
+          precedent.map((s) => (s.produitId === produitId ? { ...s, imageUrl: nouvelleUrl } : s))
+        );
+        setStockEnEdition((precedent) => (precedent ? { ...precedent, imageUrl: nouvelleUrl } : precedent));
+      } else {
+        charger();
+      }
+    } catch (e) {
+      setErreurEdition(e instanceof ApiError ? e.message : 'Échec de l\'envoi de la photo.');
+    } finally {
+      setPhotoEnCours(false);
     }
   };
 
@@ -319,11 +375,7 @@ export default function StocksScreen() {
         </View>
       )}
 
-      {!chargement && erreur && (
-        <View style={styles.centered}>
-          <Text style={styles.erreurText}>{erreur}</Text>
-        </View>
-      )}
+      {!chargement && erreur && <ErreurChargement message={erreur} onRetry={charger} />}
 
       {!chargement && !erreur && (
         <FlatList
@@ -342,7 +394,7 @@ export default function StocksScreen() {
               <View style={styles.cartePhoto}>
                 {item.imageUrl ? (
                   <Image
-                    source={{ uri: `${API_BASE_URL}${item.imageUrl}` }}
+                    source={{ uri: urlImage(item.imageUrl)! }}
                     style={styles.cartePhotoImage}
                     resizeMode="cover"
                   />
@@ -430,6 +482,45 @@ export default function StocksScreen() {
 
             {!confirmationSuppressionOuverte ? (
               <>
+                <View style={styles.photoRow}>
+                  <View style={styles.photoApercu}>
+                    {photoEnCours ? (
+                      <ActivityIndicator color={Brand.primary} />
+                    ) : stockEnEdition?.imageUrl ? (
+                      <Image
+                        source={{ uri: urlImage(stockEnEdition.imageUrl)! }}
+                        style={styles.cartePhotoImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Ionicons name="image-outline" size={24} color={Brand.textFaint} />
+                    )}
+                  </View>
+                  <View style={styles.photoActions}>
+                    <Text style={styles.label}>
+                      {stockEnEdition?.imageUrl ? 'Changer la photo' : 'Ajouter une photo'}
+                    </Text>
+                    <View style={styles.photoBoutons}>
+                      <Pressable
+                        onPress={() => changerPhotoProduit('galerie')}
+                        disabled={photoEnCours}
+                        style={styles.photoBouton}
+                      >
+                        <Ionicons name="images-outline" size={16} color={Brand.primary} />
+                        <Text style={styles.photoBoutonTexte}>Galerie</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => changerPhotoProduit('camera')}
+                        disabled={photoEnCours}
+                        style={styles.photoBouton}
+                      >
+                        <Ionicons name="camera-outline" size={16} color={Brand.primary} />
+                        <Text style={styles.photoBoutonTexte}>Photo</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+
                 <View style={styles.field}>
                   <Text style={styles.label}>Quantité en stock</Text>
                   <TextInput
@@ -693,6 +784,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  photoApercu: {
+    width: 72,
+    height: 72,
+    borderRadius: 14,
+    backgroundColor: Brand.chipBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  photoActions: { flex: 1, gap: 8 },
+  photoBoutons: { flexDirection: 'row', gap: 8 },
+  photoBouton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Brand.border,
+    backgroundColor: Colors.light.background,
+  },
+  photoBoutonTexte: { fontSize: 13, fontWeight: '700', color: Brand.primary },
   field: { gap: 6 },
   label: { fontSize: 13, fontWeight: '600', color: Colors.light.textSecondary },
   input: {

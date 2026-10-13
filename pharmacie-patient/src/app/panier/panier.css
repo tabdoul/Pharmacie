@@ -1,0 +1,239 @@
+.page {
+  min-height: 100vh;
+}
+
+.tete {
+  padding: 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.fleche,
+.vider {
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  padding: 2px;
+  cursor: pointer;
+  display: inline-flex;
+}
+
+.titres {
+  flex: 1;
+  min-width: 0;
+}
+
+.titres h1 {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--fond);
+}
+
+.titres p {
+  font-size: 13px;
+  color: var(--sur-primaire);
+  margin-top: 4px;
+}
+
+.contenu {
+  padding: 24px 24px 32px;
+}
+
+.vide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 64px 16px;
+  text-align: center;
+}
+
+.vide-icone {
+  color: var(--bordure);
+  display: inline-flex;
+}
+
+.vide-titre {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.vide-texte {
+  font-size: 13.5px;
+  line-height: 19px;
+  color: var(--texte-leger);
+}
+
+.retirer-achetes {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 12px;
+  margin-bottom: 10px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--succes-fond);
+  color: var(--primaire);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.groupes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.groupe {
+  padding: 14px;
+}
+
+.groupe-tete {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.groupe-corps {
+  flex: 1;
+  min-width: 0;
+}
+
+.groupe-nom {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.groupe-lieu {
+  font-size: 12.5px;
+  color: var(--texte-leger);
+  margin-top: 3px;
+}
+
+.appel {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.articles {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--bordure);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.article {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.case {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--texte-leger);
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.case.cochee {
+  color: var(--succes);
+}
+
+.article-corps {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  color: inherit;
+  text-decoration: none;
+}
+
+.article-corps:hover .article-nom {
+  text-decoration: underline;
+}
+
+.article-nom {
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.article-prix {
+  font-size: 12.5px;
+  color: var(--texte-leger);
+  margin-top: 1px;
+}
+
+.article-nom.achete,
+.article-prix.achete {
+  color: #8fa89c;
+  text-decoration: line-through;
+}
+
+.retirer {
+  border: 0;
+  background: transparent;
+  color: var(--texte-leger);
+  padding: 4px;
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.sous-total {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--bordure);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sous-total-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--texte-doux);
+}
+
+.sous-total-valeur {
+  font-size: 14.5px;
+  font-weight: 800;
+}
+
+.total-general {
+  margin-top: 14px;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--succes-fond);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.total-general-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primaire);
+}
+
+.total-general-valeur {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--primaire);
+}

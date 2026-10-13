@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, ScrollView, ActivityIndicator, Linking, Image, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, Brand, Spacing } from '@/constants/theme';
-import { apiClient, ApiError, API_BASE_URL } from '@/api/client';
+import { apiClient, ApiError } from '@/api/client';
+import { urlImage } from '@/lib/image';
 
 type StockDetail = {
   stockId: number;
@@ -101,7 +102,7 @@ export default function DetailScreen() {
                 <View style={styles.iconBox}>
                   {detail.imageUrl ? (
                     <Image
-                      source={{ uri: `${API_BASE_URL}${detail.imageUrl}` }}
+                      source={{ uri: urlImage(detail.imageUrl)! }}
                       style={styles.iconImage}
                       resizeMode="cover"
                     />

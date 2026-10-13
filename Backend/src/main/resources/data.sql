@@ -1,29 +1,9 @@
--- ============================================================================
--- Jeu de donnees de test - Plateforme pharmacie Guinee
--- ============================================================================
--- Execute automatiquement au demarrage (spring.sql.init.mode=always +
--- spring.jpa.defer-datasource-initialization=true).
---
--- Mot de passe en clair pour TOUTES les pharmacies ci-dessous : password123
--- (hash BCrypt precalcule, ne pas utiliser tel quel en production)
---
--- IMPORTANT : ce script vide les 4 tables a CHAQUE demarrage de l'application
--- (RESTART IDENTITY reinitialise aussi les compteurs d'id a 1), pour permettre
--- de relancer l'app autant de fois que necessaire pendant les tests sans
--- erreur de cle dupliquee. Toute donnee ajoutee via Postman entre deux
--- redemarrages sera donc perdue au redemarrage suivant -- c'est voulu pour
--- un environnement de test repetable.
--- ============================================================================
-
-TRUNCATE TABLE notifications, stocks, produits, pharmacies RESTART IDENTITY CASCADE;
 
 -- ----------------------------------------------------------------------------
--- PHARMACIES
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
 -- ----------------------------------------------------------------------------
--- 1 : VALIDEE   -> utiliser pour tester login + back-office complet
--- 2 : EN_ATTENTE -> utiliser pour tester le flux d'administration (valider/rejeter)
--- 3 : REJETEE    -> utiliser pour verifier qu'une pharmacie rejetee ne peut pas se connecter
--- ----------------------------------------------------------------------------
+
 
 INSERT INTO pharmacies
     (id, identifiant_connexion, mot_de_passe, nom, adresse, ville, quartier, telephone,
@@ -39,7 +19,8 @@ VALUES
 
     (3, 'pharmacie.rejetee', '$2b$10$YgmLZmMHXeo34Bk5HkZ3Y.gDt.VOYrm9a6Ekhkytc/ivESX8dP6j2',
      'Pharmacie Test Ratoma', 'Carrefour Ratoma', 'Conakry', 'Ratoma',
-     '+224620000003', 'demo-agrement-3.pdf', 'REJETEE', 'Document illisible, a retransmettre.');
+     '+224620000003', 'demo-agrement-3.pdf', 'REJETEE', 'Document illisible, a retransmettre.')
+ON CONFLICT DO NOTHING;
 
 -- ----------------------------------------------------------------------------
 -- PRODUITS
@@ -52,7 +33,8 @@ INSERT INTO produits (id, nom, forme, image_url, description) VALUES
     (4, 'Serum physiologique', 'GOUTTES', NULL, 'Nettoyage nasal et oculaire.'),
     (5, 'Pommade antiseptique', 'POMMADE', NULL, 'Usage externe, plaies superficielles.'),
     (6, 'Vitamine C effervescente', 'COMPRIME', NULL, 'Complement en cas de fatigue passagere.'),
-    (7, 'Spray nasal decongestionnant', 'SPRAY', NULL, 'Soulage la congestion nasale.');
+    (7, 'Spray nasal decongestionnant', 'SPRAY', NULL, 'Soulage la congestion nasale.')
+ON CONFLICT DO NOTHING;
 
 -- ----------------------------------------------------------------------------
 -- STOCKS (rattaches a la pharmacie 1, validee)
@@ -67,7 +49,8 @@ INSERT INTO stocks (id, pharmacie_id, produit_id, quantite, seuil_alerte, prix, 
     (1, 1, 1, 50, 10, 5000.00, NOW()),
     (2, 1, 2, 5, 10, 15000.00, NOW()),
     (3, 1, 3, 0, 5, 20000.00, NOW()),
-    (4, 1, 4, 30, 5, 3000.00, NOW());
+    (4, 1, 4, 30, 5, 3000.00, NOW())
+ON CONFLICT DO NOTHING;
 
 -- ----------------------------------------------------------------------------
 -- NOTIFICATIONS
@@ -77,7 +60,8 @@ INSERT INTO stocks (id, pharmacie_id, produit_id, quantite, seuil_alerte, prix, 
 -- ----------------------------------------------------------------------------
 
 INSERT INTO notifications (id, pharmacie_id, stock_id, message, lue, date_creation) VALUES
-    (1, 1, 2, 'Stock faible pour "Amoxicilline 500mg" : 5 unite(s) restante(s) (seuil : 10).', false, NOW());
+    (1, 1, 2, 'Stock faible pour "Amoxicilline 500mg" : 5 unite(s) restante(s) (seuil : 10).', false, NOW())
+ON CONFLICT DO NOTHING;
 
 -- ----------------------------------------------------------------------------
 -- Realignement des sequences d'identifiants (necessaire car les id sont

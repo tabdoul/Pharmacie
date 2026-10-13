@@ -38,6 +38,20 @@ const LIBELLE_FORME: Record<string, string> = {
   GOUTTES: 'Gouttes', PATCH: 'Patch', SPRAY: 'Spray', AUTRE: 'Autre',
 };
 
+// Cle de comparaison : sans accents, majuscules, espaces ni ponctuation.
+// "Paracétamol 500 mg" et "paracetamol 500mg" donnent la meme cle.
+// (Meme logique que TexteUtil.cleComparaison cote serveur.)
+const cle = (texte: string): string =>
+  (typeof texte.normalize === 'function' ? texte.normalize('NFD') : texte)
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/([0-9])[.,]([0-9])/g, '$1p$2')
+    .replace(/[^a-z0-9%/]/g, '');
+
+const UNITES = ['mg', 'g', 'mcg', 'ml', 'UI', '%', 'mg/ml', 'AUTRE'];
+const LIBELLE_UNITE: Record<string, string> = { AUTRE: 'Autre / combiné' };
+const libelleUnite = (u: string) => LIBELLE_UNITE[u] ?? u;
+
 export default function AjouterProduitScreen() {
   const router = useRouter();
   const { token } = useAuth();
@@ -62,12 +76,54 @@ export default function AjouterProduitScreen() {
   // une fois l'id du produit connu (creation ou produit existant).
   const [photoUri, setPhotoUri] = useState<string | null>(null);
 
+  // Dosage (facultatif) : nombre + unite, ou texte libre si l'unite est "Autre / combine"
+  const [dosageValeur, setDosageValeur] = useState('');
+  const [dosageUnite, setDosageUnite] = useState('mg');
+  const [dosageLibre, setDosageLibre] = useState('');
+  const [modaleUniteOuverte, setModaleUniteOuverte] = useState(false);
+
+  // Precision de la forme quand "Autre" est choisi (ex : Collyre)
+  const [formeAutre, setFormeAutre] = useState('');
+
+  // Nom complet assemble par l'app : "Paracétamol 500 mg" (+ precision de forme si "Autre").
+  // C'est ce nom qui est enregistre, affiche aux patients et compare pour les doublons.
+  const dosageTexte =
+    dosageUnite === 'AUTRE'
+      ? dosageLibre.trim()
+      : dosageValeur.trim()
+        ? `${dosageValeur.trim()} ${dosageUnite}`
+        : '';
+  const nomComplet = [nom.trim(), dosageTexte, forme === 'AUTRE' ? formeAutre.trim() : '']
+    .filter(Boolean)
+    .join(' ');
+
   const [enregistrement, setEnregistrement] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
 
+  // Produits que la pharmacie a deja dans son stock (pour la prevenir avant l'envoi)
+  const [idsDejaEnStock, setIdsDejaEnStock] = useState<number[]>([]);
+
+  useEffect(() => {
+    if (!token) return;
+    apiClient
+      .get<{ produitId: number }[]>('/api/pharmacien/stocks', token)
+      .then((data) => setIdsDejaEnStock(data.map((s) => s.produitId)))
+      .catch(() => setIdsDejaEnStock([]));
+  }, [token]);
+
+  // Parmi les resultats : ceux qui sont le MEME produit (aux accents, majuscules et espaces pres)
+  // et ceux qui sont seulement proches.
+  const cleSaisie = cle(nomComplet);
+  const exacts = cleSaisie.length >= 3 ? correspondances.filter((p) => cle(p.nom) === cleSaisie) : [];
+  const proches = correspondances.filter((p) => !exacts.includes(p));
+
+  const dejaEnStock = produitExistantChoisi
+    ? idsDejaEnStock.includes(produitExistantChoisi.id)
+    : false;
+
   // Detection en direct des doublons potentiels pendant la saisie du nom
   useEffect(() => {
-    if (produitExistantChoisi || !token || nom.trim().length < 3) {
+    if (produitExistantChoisi || !token || nomComplet.length < 3) {
       setCorrespondances([]);
       return;
     }
@@ -75,7 +131,7 @@ export default function AjouterProduitScreen() {
     setRechercheEnCours(true);
     const delai = setTimeout(() => {
       apiClient
-        .get<Produit[]>(`/api/pharmacien/produits?nom=${encodeURIComponent(nom.trim())}`, token)
+        .get<Produit[]>(`/api/pharmacien/produits?nom=${encodeURIComponent(nomComplet)}`, token)
         .then((data) => {
           if (!annule) setCorrespondances(data);
         })
@@ -91,7 +147,7 @@ export default function AjouterProduitScreen() {
       annule = true;
       clearTimeout(delai);
     };
-  }, [nom, token, produitExistantChoisi]);
+  }, [nomComplet, token, produitExistantChoisi]);
 
   const choisirProduitExistant = (produit: Produit) => {
     setProduitExistantChoisi(produit);
@@ -107,6 +163,10 @@ export default function AjouterProduitScreen() {
     setNom('');
     setForme(null);
     setDescription('');
+    setDosageValeur('');
+    setDosageUnite('mg');
+    setDosageLibre('');
+    setFormeAutre('');
   };
 
   const choisirPhotoGalerie = async () => {
@@ -158,10 +218,20 @@ export default function AjouterProduitScreen() {
     if (!token) return;
     setErreur(null);
 
-    const nomFinal = nom.trim();
-    if (!produitExistantChoisi && !nomFinal) {
-      setErreur('Le nom du produit est obligatoire.');
-      return;
+    const nomFinal = nomComplet;
+    if (!produitExistantChoisi) {
+      if (!nom.trim()) {
+        setErreur('Le nom du produit est obligatoire.');
+        return;
+      }
+      if (dosageUnite !== 'AUTRE' && dosageValeur.trim() && !/^\d+([.,]\d+)?$/.test(dosageValeur.trim())) {
+        setErreur('Le dosage doit être un nombre (ex : 500 ou 2,5).');
+        return;
+      }
+      if (forme === 'AUTRE' && !formeAutre.trim()) {
+        setErreur('Précisez la forme du produit (ex : Collyre).');
+        return;
+      }
     }
 
     const quantiteNum = Number(quantite);
@@ -181,8 +251,29 @@ export default function AjouterProduitScreen() {
       return;
     }
 
+    if (dejaEnStock) {
+      setErreur('Vous avez déjà ce produit dans votre stock. Modifiez plutôt sa quantité depuis la liste de vos stocks.');
+      return;
+    }
+
     setEnregistrement(true);
     try {
+      // Verification finale (donnees fraiches) : refuse de creer un doublon
+      if (!produitExistantChoisi) {
+        const liste = await apiClient.get<Produit[]>(
+          `/api/pharmacien/produits?nom=${encodeURIComponent(nomFinal)}`,
+          token
+        );
+        const existant = liste.find((p) => cle(p.nom) === cle(nomFinal));
+        if (existant) {
+          setCorrespondances(liste);
+          setErreur(
+            `« ${existant.nom} » existe déjà dans le catalogue. Utilisez cette fiche au lieu d'en créer une nouvelle.`
+          );
+          return;
+        }
+      }
+
       const produit: Produit = produitExistantChoisi
         ? produitExistantChoisi
         : await apiClient.post<Produit>(
@@ -239,12 +330,70 @@ export default function AjouterProduitScreen() {
               <TextInput
                 value={nom}
                 onChangeText={setNom}
-                placeholder="ex : Paracétamol 500mg"
+                placeholder="ex : Paracétamol"
                 placeholderTextColor={Brand.textFaint}
                 style={styles.input}
                 autoFocus
               />
             </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Dosage (optionnel)</Text>
+              <View style={styles.dosageRow}>
+                {dosageUnite === 'AUTRE' ? (
+                  <TextInput
+                    value={dosageLibre}
+                    onChangeText={setDosageLibre}
+                    placeholder="ex : 500 mg / 125 mg"
+                    placeholderTextColor={Brand.textFaint}
+                    style={[styles.input, { flex: 1 }]}
+                  />
+                ) : (
+                  <TextInput
+                    value={dosageValeur}
+                    onChangeText={setDosageValeur}
+                    keyboardType="decimal-pad"
+                    placeholder="ex : 500"
+                    placeholderTextColor={Brand.textFaint}
+                    style={[styles.input, { flex: 1 }]}
+                  />
+                )}
+                <Pressable onPress={() => setModaleUniteOuverte(true)} style={[styles.selecteur, styles.uniteSelecteur]}>
+                  <Text style={styles.selecteurTexte}>{libelleUnite(dosageUnite)}</Text>
+                  <Ionicons name="chevron-down" size={16} color={Brand.textFaint} />
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Forme (optionnel)</Text>
+              <Pressable onPress={() => setModaleFormeOuverte(true)} style={styles.selecteur}>
+                <Text style={styles.selecteurTexte}>
+                  {forme ? LIBELLE_FORME[forme] : 'Choisir une forme'}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={Brand.textFaint} />
+              </Pressable>
+            </View>
+
+            {forme === 'AUTRE' && (
+              <View style={styles.field}>
+                <Text style={styles.label}>Précisez la forme</Text>
+                <TextInput
+                  value={formeAutre}
+                  onChangeText={setFormeAutre}
+                  placeholder="ex : Collyre"
+                  placeholderTextColor={Brand.textFaint}
+                  style={styles.input}
+                />
+              </View>
+            )}
+
+            {nomComplet.length > 0 && (
+              <View style={styles.apercuBox}>
+                <Text style={styles.apercuLabel}>Nom affiché aux patients</Text>
+                <Text style={styles.apercuNom}>{nomComplet}</Text>
+              </View>
+            )}
 
             {rechercheEnCours && (
               <View style={styles.checkingRow}>
@@ -253,15 +402,39 @@ export default function AjouterProduitScreen() {
               </View>
             )}
 
-            {!rechercheEnCours && correspondances.length > 0 && (
+            {!rechercheEnCours && exacts.length > 0 && (
+              <View style={styles.exactBox}>
+                <View style={styles.doublonHeader}>
+                  <Ionicons name="close-circle-outline" size={16} color={Brand.danger} />
+                  <Text style={styles.exactTitre}>Ce produit existe déjà dans le catalogue</Text>
+                </View>
+                {exacts.map((item) => (
+                  <Pressable key={item.id} onPress={() => choisirProduitExistant(item)} style={styles.doublonItem}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.doublonItemNom}>{item.nom}</Text>
+                      {item.forme && (
+                        <Text style={styles.doublonItemForme}>{LIBELLE_FORME[item.forme] ?? item.forme}</Text>
+                      )}
+                    </View>
+                    <Text style={styles.doublonItemAction}>Utiliser cette fiche</Text>
+                  </Pressable>
+                ))}
+                <Text style={styles.exactHint}>
+                  Pour éviter les doublons, on ne crée pas une deuxième fiche pour le même produit.
+                  Utilisez la fiche existante, puis indiquez votre quantité et votre prix.
+                </Text>
+              </View>
+            )}
+
+            {!rechercheEnCours && proches.length > 0 && (
               <View style={styles.doublonBox}>
                 <View style={styles.doublonHeader}>
                   <Ionicons name="alert-circle-outline" size={16} color={Brand.warning} />
                   <Text style={styles.doublonTitre}>
-                    Ce produit existe peut-être déjà dans le catalogue
+                    Des produits proches existent déjà dans le catalogue
                   </Text>
                 </View>
-                {correspondances.map((item) => (
+                {proches.map((item) => (
                   <Pressable key={item.id} onPress={() => choisirProduitExistant(item)} style={styles.doublonItem}>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={styles.doublonItemNom}>{item.nom}</Text>
@@ -273,20 +446,10 @@ export default function AjouterProduitScreen() {
                   </Pressable>
                 ))}
                 <Text style={styles.doublonHint}>
-                  Aucun ne correspond ? Continuez ci-dessous pour créer un nouveau produit.
+                  Aucun ne correspond (dosage ou forme différents) ? Continuez ci-dessous pour créer un nouveau produit.
                 </Text>
               </View>
             )}
-
-            <View style={styles.field}>
-              <Text style={styles.label}>Forme (optionnel)</Text>
-              <Pressable onPress={() => setModaleFormeOuverte(true)} style={styles.selecteur}>
-                <Text style={styles.selecteurTexte}>
-                  {forme ? LIBELLE_FORME[forme] : 'Choisir une forme'}
-                </Text>
-                <Ionicons name="chevron-down" size={16} color={Brand.textFaint} />
-              </Pressable>
-            </View>
 
             <View style={styles.field}>
               <Text style={styles.label}>Description (optionnel)</Text>
@@ -316,6 +479,14 @@ export default function AjouterProduitScreen() {
             <Pressable onPress={annulerProduitExistant} hitSlop={8}>
               <Ionicons name="close-circle" size={22} color={Brand.textFaint} />
             </Pressable>
+          </View>
+        )}
+
+        {dejaEnStock && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>
+              Vous avez déjà ce produit dans votre stock. Modifiez plutôt sa quantité depuis la liste de vos stocks.
+            </Text>
           </View>
         )}
 
@@ -387,8 +558,11 @@ export default function AjouterProduitScreen() {
 
         <Pressable
           onPress={soumettre}
-          disabled={enregistrement}
-          style={[styles.submitButton, enregistrement && styles.submitButtonDisabled]}
+          disabled={enregistrement || exacts.length > 0 || dejaEnStock}
+          style={[
+            styles.submitButton,
+            (enregistrement || exacts.length > 0 || dejaEnStock) && styles.submitButtonDisabled,
+          ]}
         >
           {enregistrement ? (
             <ActivityIndicator color="#FFFFFF" />
@@ -425,6 +599,37 @@ export default function AjouterProduitScreen() {
                 >
                   <Text style={styles.modalItemTexte}>{LIBELLE_FORME[item]}</Text>
                   {forme === item && <Ionicons name="checkmark" size={18} color={Brand.primary} />}
+                </Pressable>
+              )}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Modale de selection de l'unite du dosage */}
+      <Modal
+        visible={modaleUniteOuverte}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModaleUniteOuverte(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setModaleUniteOuverte(false)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Unité du dosage</Text>
+            <FlatList
+              data={UNITES}
+              keyExtractor={(item) => item}
+              style={{ maxHeight: 360 }}
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => {
+                    setDosageUnite(item);
+                    setModaleUniteOuverte(false);
+                  }}
+                  style={styles.modalItem}
+                >
+                  <Text style={styles.modalItemTexte}>{libelleUnite(item)}</Text>
+                  {dosageUnite === item && <Ionicons name="checkmark" size={18} color={Brand.primary} />}
                 </Pressable>
               )}
             />
@@ -470,6 +675,19 @@ const styles = StyleSheet.create({
   },
   doublonHeader: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   doublonTitre: { flex: 1, fontSize: 12.5, fontWeight: '700', color: '#8A6A2E' },
+  dosageRow: { flexDirection: 'row', gap: 10, alignItems: 'stretch' },
+  uniteSelecteur: { minWidth: 130, gap: 6 },
+  apercuBox: { backgroundColor: Brand.chipBg, borderRadius: 12, padding: 12, gap: 2 },
+  apercuLabel: { fontSize: 11.5, color: Brand.textFaint },
+  apercuNom: { fontSize: 15, fontWeight: '700', color: Colors.light.text },
+  exactBox: {
+    backgroundColor: Brand.dangerBg,
+    borderRadius: 14,
+    padding: 12,
+    gap: 8,
+  },
+  exactTitre: { flex: 1, fontSize: 12.5, fontWeight: '700', color: Brand.danger },
+  exactHint: { fontSize: 11.5, color: Brand.danger, lineHeight: 15 },
   doublonItem: {
     flexDirection: 'row',
     alignItems: 'center',
