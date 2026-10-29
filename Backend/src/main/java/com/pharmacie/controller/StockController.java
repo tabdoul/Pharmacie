@@ -2,7 +2,7 @@ package com.pharmacie.controller;
 
 import com.pharmacie.dto.request.StockAjoutRequest;
 import com.pharmacie.dto.request.StockMajRequest;
-import com.pharmacie.dto.StockPharmacienDTO;
+import com.pharmacie.dto.response.StockPharmacienDTO;
 import com.pharmacie.dto.request.StockSeuilRequest;
 import com.pharmacie.dto.response.ImportStockResponse;
 import com.pharmacie.entity.Pharmacie;
